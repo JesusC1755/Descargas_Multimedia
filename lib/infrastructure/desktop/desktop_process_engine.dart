@@ -11,19 +11,33 @@ import '../../domain/ports/media_engine_port.dart';
 class DesktopProcessEngine implements IMediaEngine {
   Process? _activeProcess;
 
+  String _getYtDlpExecutable() {
+    final home = Platform.environment['HOME'] ?? '';
+    final localBin = '$home/.local/bin/yt-dlp';
+    if (File(localBin).existsSync()) {
+      return localBin;
+    }
+    const usrLocalBin = '/usr/local/bin/yt-dlp';
+    if (File(usrLocalBin).existsSync()) {
+      return usrLocalBin;
+    }
+    return 'yt-dlp';
+  }
+
   @override
   Future<bool> isYtDlpAvailable() async {
+    final bin = _getYtDlpExecutable();
     try {
-      final res = await Process.run('yt-dlp', ['--version']);
+      final res = await Process.run(bin, ['--version']);
       final available = res.exitCode == 0;
       if (available) {
-        talker.info('yt-dlp detectado versión: ${res.stdout.toString().trim()}');
+        talker.info('yt-dlp ($bin) versión: ${res.stdout.toString().trim()}');
       } else {
         talker.warning('yt-dlp falló con código ${res.exitCode}: ${res.stderr}');
       }
       return available;
     } catch (e, st) {
-      talker.error('Error al verificar yt-dlp en el sistema', e, st);
+      talker.error('Error al verificar yt-dlp ($bin) en el sistema', e, st);
       return false;
     }
   }
@@ -47,10 +61,16 @@ class DesktopProcessEngine implements IMediaEngine {
 
   @override
   Future<MediaInfo> analyzeUrl(String url) async {
-    talker.info('Iniciando análisis de URL: $url');
-    final args = ['--no-playlist', '--dump-json', url];
+    final bin = _getYtDlpExecutable();
+    talker.info('Iniciando análisis con $bin para URL: $url');
+    final args = [
+      '--js-runtimes', 'node',
+      '--no-playlist',
+      '--dump-json',
+      url,
+    ];
 
-    final process = await Process.run('yt-dlp', args);
+    final process = await Process.run(bin, args);
 
     if (process.exitCode != 0) {
       final err = process.stderr.toString().trim();
@@ -94,9 +114,16 @@ class DesktopProcessEngine implements IMediaEngine {
           label = 'HD ($label)';
         }
 
+        // Priorizamos H.264 (avc1) y audio AAC (mp4a) para máxima compatibilidad con todos los reproductores.
+        // Si no existe (ej. 4K/2K donde YouTube solo tiene VP9/AV1), recurre a la mejor calidad disponible.
+        final formatString = 'bestvideo[height<=$h][vcodec^=avc1]+bestaudio[acodec^=mp4a]'
+            '/bestvideo[height<=$h][ext=mp4]+bestaudio[ext=m4a]'
+            '/bestvideo[height<=$h]+bestaudio'
+            '/best[height<=$h]/best';
+
         videoOptions.add(
           StreamOption(
-            formatId: 'bestvideo[height<=$h]+bestaudio/best[height<=$h]/best',
+            formatId: formatString,
             label: label,
             extension: 'mp4',
             height: h,
@@ -108,8 +135,8 @@ class DesktopProcessEngine implements IMediaEngine {
       if (videoOptions.isEmpty) {
         videoOptions.add(
           const StreamOption(
-            formatId: 'bestvideo+bestaudio/best',
-            label: 'Mejor Calidad Disponible',
+            formatId: 'bestvideo[vcodec^=avc1]+bestaudio[acodec^=mp4a]/bestvideo+bestaudio/best',
+            label: 'Mejor Calidad Disponible (MP4)',
             extension: 'mp4',
             isAudioOnly: false,
           ),
@@ -143,7 +170,7 @@ class DesktopProcessEngine implements IMediaEngine {
         ),
       ];
 
-      talker.info('Análisis completado: "$title" - ${videoOptions.length} calidades encontradas');
+      talker.info('Análisis completado: "$title" (${videoOptions.length} calidades de video)');
 
       return MediaInfo(
         url: url,
@@ -174,7 +201,9 @@ class DesktopProcessEngine implements IMediaEngine {
     );
     controller.add(currentProgress);
 
+    final bin = _getYtDlpExecutable();
     final args = <String>[
+      '--js-runtimes', 'node',
       url,
       '--newline',
       '--progress-template',
@@ -202,10 +231,10 @@ class DesktopProcessEngine implements IMediaEngine {
       ]);
     }
 
-    talker.info('Lanzando comando yt-dlp: yt-dlp ${args.join(" ")}');
+    talker.info('Lanzando comando: $bin ${args.join(" ")}');
     final stderrBuffer = StringBuffer();
 
-    Process.start('yt-dlp', args).then((process) {
+    Process.start(bin, args).then((process) {
       _activeProcess = process;
 
       process.stdout
