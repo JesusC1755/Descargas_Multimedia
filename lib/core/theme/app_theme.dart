@@ -1,6 +1,9 @@
 import 'package:flex_color_scheme/flex_color_scheme.dart';
 import 'package:flutter/material.dart';
 
+/// Configuración centralizada de theming con Material 3 y FlexColorScheme (DeepBlue).
+/// Define superficies tonales de alto contraste, bordes redondeados ergonómicos
+/// y adaptación dinámica tanto para temas claros como oscuros.
 class AppTheme {
   static const FlexScheme _usedScheme = FlexScheme.deepBlue;
 
@@ -9,19 +12,22 @@ class AppTheme {
       scheme: _usedScheme,
       useMaterial3: true,
       surfaceMode: FlexSurfaceMode.levelSurfacesLowScaffold,
-      blendLevel: 7,
+      blendLevel: 6,
       subThemesData: const FlexSubThemesData(
         blendOnLevel: 10,
         blendOnColors: false,
         useMaterial3Typography: true,
         useM2StyleDividerInM3: false,
-        defaultRadius: 12.0,
+        defaultRadius: 14.0,
+        cardRadius: 18.0,
+        cardElevation: 0.5,
         elevatedButtonSchemeColor: SchemeColor.onPrimaryContainer,
         elevatedButtonSecondarySchemeColor: SchemeColor.primaryContainer,
         segmentedButtonSchemeColor: SchemeColor.primary,
         inputDecoratorBorderType: FlexInputBorderType.outline,
         inputDecoratorUnfocusedBorderIsColored: false,
-        cardRadius: 16.0,
+        chipSchemeColor: SchemeColor.primary,
+        tooltipRadius: 8,
       ),
       visualDensity: VisualDensity.adaptivePlatformDensity,
     );
@@ -32,18 +38,21 @@ class AppTheme {
       scheme: _usedScheme,
       useMaterial3: true,
       surfaceMode: FlexSurfaceMode.levelSurfacesLowScaffold,
-      blendLevel: 13,
+      blendLevel: 12,
       subThemesData: const FlexSubThemesData(
-        blendOnLevel: 20,
+        blendOnLevel: 18,
         useMaterial3Typography: true,
         useM2StyleDividerInM3: false,
-        defaultRadius: 12.0,
+        defaultRadius: 14.0,
+        cardRadius: 18.0,
+        cardElevation: 0.5,
         elevatedButtonSchemeColor: SchemeColor.onPrimaryContainer,
         elevatedButtonSecondarySchemeColor: SchemeColor.primaryContainer,
         segmentedButtonSchemeColor: SchemeColor.primary,
         inputDecoratorBorderType: FlexInputBorderType.outline,
         inputDecoratorUnfocusedBorderIsColored: false,
-        cardRadius: 16.0,
+        chipSchemeColor: SchemeColor.primary,
+        tooltipRadius: 8,
       ),
       visualDensity: VisualDensity.adaptivePlatformDensity,
     );
