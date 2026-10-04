@@ -81,13 +81,6 @@ class UrlInputCard extends StatelessWidget {
                         letterSpacing: -0.2,
                       ),
                     ),
-                    const Spacer(),
-                    Text(
-                      'Enter para analizar',
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-                      ),
-                    ),
                   ],
                 ),
                 const SizedBox(height: 14),

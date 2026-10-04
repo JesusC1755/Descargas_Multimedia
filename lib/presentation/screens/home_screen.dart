@@ -41,10 +41,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final TextEditingController _urlController = TextEditingController();
   final IMediaEngine _engine = DesktopProcessEngine();
 
-  bool _isCheckingSystem = true;
-  bool _hasYtDlp = false;
-  bool _hasFFmpeg = false;
-
   bool _isAnalyzing = false;
   bool _isDownloading = false;
 
@@ -100,13 +96,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final ytdlp = await _engine.isYtDlpAvailable();
     final ffmpeg = await _engine.isFFmpegAvailable();
 
-    if (mounted) {
-      setState(() {
-        _hasYtDlp = ytdlp;
-        _hasFFmpeg = ffmpeg;
-        _isCheckingSystem = false;
-      });
-    }
+    if (!ytdlp) talker.warning('yt-dlp no fue detectado en las rutas del sistema.');
+    if (!ffmpeg) talker.warning('FFmpeg no fue detectado en las rutas del sistema.');
   }
 
   Future<void> _initDownloadDirectory() async {
@@ -142,6 +133,168 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     } catch (e) {
       talker.warning('No se pudo abrir el explorador de archivos: $e');
     }
+  }
+
+  Future<void> _selectDownloadDirectory() async {
+    String? newPath;
+
+    try {
+      if (Platform.isLinux) {
+        final result = await Process.run('zenity', [
+          '--file-selection',
+          '--directory',
+          '--title=Seleccionar carpeta de descargas',
+          if (_downloadDirectory.isNotEmpty) '--filename=$_downloadDirectory/',
+        ]);
+        if (result.exitCode == 0) {
+          final out = result.stdout.toString().trim();
+          if (out.isNotEmpty && Directory(out).existsSync()) {
+            newPath = out;
+          }
+        } else if (result.exitCode == 1) {
+          // El usuario canceló la selección nativa
+          return;
+        }
+      } else if (Platform.isMacOS) {
+        final result = await Process.run('osascript', [
+          '-e',
+          'POSIX path of (choose folder with prompt "Seleccionar carpeta de descargas")',
+        ]);
+        if (result.exitCode == 0) {
+          final out = result.stdout.toString().trim();
+          if (out.isNotEmpty && Directory(out).existsSync()) {
+            newPath = out;
+          }
+        } else {
+          return;
+        }
+      } else if (Platform.isWindows) {
+        final script =
+            '[System.Reflection.Assembly]::LoadWithPartialName("System.windows.forms") | Out-Null; '
+            '\$dlg = New-Object System.Windows.Forms.FolderBrowserDialog; '
+            '\$dlg.Description = "Seleccionar carpeta de descargas"; '
+            'if(\$dlg.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK){ Write-Output \$dlg.SelectedPath }';
+        final result = await Process.run('powershell', ['-NoProfile', '-Command', script]);
+        if (result.exitCode == 0) {
+          final out = result.stdout.toString().trim();
+          if (out.isNotEmpty && Directory(out).existsSync()) {
+            newPath = out;
+          }
+        }
+      }
+    } catch (e) {
+      talker.warning('Selector nativo no disponible o error: $e');
+    }
+
+    if (newPath != null && mounted) {
+      setState(() => _downloadDirectory = newPath!);
+      talker.info('Carpeta de descargas actualizada: $newPath');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Carpeta de descarga cambiada a: $newPath'),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      );
+      return;
+    }
+
+    if (!mounted) return;
+    await _showCustomFolderDialog();
+  }
+
+  Future<void> _showCustomFolderDialog() async {
+    final controller = TextEditingController(text: _downloadDirectory);
+    final home = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '';
+
+    final commonFolders = <String, String>{
+      'Descargas': Directory('$home/Descargas').existsSync() ? '$home/Descargas' : '$home/Downloads',
+      'Videos': Directory('$home/Videos').existsSync() ? '$home/Videos' : '$home/Vídeos',
+      'Música': Directory('$home/Música').existsSync() ? '$home/Música' : '$home/Music',
+      'Documentos': Directory('$home/Documentos').existsSync() ? '$home/Documentos' : '$home/Documents',
+      'Escritorio': Directory('$home/Escritorio').existsSync() ? '$home/Escritorio' : '$home/Desktop',
+    };
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        final theme = Theme.of(ctx);
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          title: Row(
+            children: [
+              Icon(Icons.folder_outlined, color: theme.colorScheme.primary),
+              const SizedBox(width: 10),
+              const Text('Elegir Carpeta de Descargas'),
+            ],
+          ),
+          content: SizedBox(
+            width: 480,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: controller,
+                  decoration: const InputDecoration(
+                    labelText: 'Ruta de la carpeta',
+                    hintText: '/home/usuario/Descargas',
+                    prefixIcon: Icon(Icons.folder_open_rounded),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Ubicaciones comunes:',
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: commonFolders.entries.map((entry) {
+                    return ActionChip(
+                      avatar: const Icon(Icons.folder_special_rounded, size: 14),
+                      label: Text(entry.key),
+                      onPressed: () {
+                        controller.text = entry.value;
+                      },
+                    );
+                  }).toList(),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final text = controller.text.trim();
+                if (text.isNotEmpty && Directory(text).existsSync()) {
+                  setState(() => _downloadDirectory = text);
+                  Navigator.of(ctx).pop();
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: const Text('La carpeta especificada no existe en el sistema'),
+                      backgroundColor: theme.colorScheme.error,
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
+              },
+              child: const Text('Guardar'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Future<void> _analyzeUrl([String? explicitUrl]) async {
@@ -333,12 +486,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ],
             ),
             actions: [
-              if (!_isCheckingSystem) ...[
-                _StatusBadge(label: 'yt-dlp', isOk: _hasYtDlp),
-                const SizedBox(width: 6),
-                _StatusBadge(label: 'FFmpeg', isOk: _hasFFmpeg),
-                const SizedBox(width: 8),
-              ],
               IconButton(
                 tooltip: 'Consola de Diagnóstico (Talker)',
                 icon: const Icon(Icons.terminal_rounded),
@@ -533,19 +680,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ),
           const SizedBox(width: 10),
           Tooltip(
-            message: 'Abrir carpeta en el explorador de archivos del sistema',
+            message: 'Seleccionar una nueva carpeta de destino',
             child: InkWell(
-              onTap: _openDownloadsFolder,
+              onTap: _selectDownloadDirectory,
               borderRadius: BorderRadius.circular(8),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.open_in_new_rounded, size: 14, color: theme.colorScheme.primary),
-                    const SizedBox(width: 4),
+                    Icon(Icons.folder_open_rounded, size: 15, color: theme.colorScheme.primary),
+                    const SizedBox(width: 5),
                     Text(
-                      'Abrir',
+                      'Cambiar',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.bold,
@@ -563,43 +710,3 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 }
 
-class _StatusBadge extends StatelessWidget {
-  final String label;
-  final bool isOk;
-
-  const _StatusBadge({required this.label, required this.isOk});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final color = isOk ? theme.colorScheme.tertiary : theme.colorScheme.error;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
-        border: Border.all(color: color.withValues(alpha: 0.4)),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 7,
-            height: 7,
-            decoration: BoxDecoration(shape: BoxShape.circle, color: color),
-          ),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              color: color,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}

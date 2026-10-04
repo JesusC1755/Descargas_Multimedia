@@ -288,7 +288,7 @@ class DesktopProcessEngine implements IMediaEngine {
             currentProgress.copyWith(
               status: DownloadStatus.completed,
               percentage: 100.0,
-              currentStep: '¡Descarga y procesado completados con éxito!',
+              currentStep: '¡Descarga Exitosa!',
             ),
           );
         } else {

@@ -85,11 +85,11 @@ class DownloadProgressCard extends StatelessWidget {
                     children: [
                       Text(
                         isDone
-                            ? '¡Descarga y Procesamiento Exitosos!'
+                            ? '¡Descarga Exitosa!'
                             : isError
                                 ? 'Fallo en la Operación'
                                 : isProcessing
-                                    ? 'Uniendo pistas con FFmpeg...'
+                                    ? 'Procesando y combinando pistas...'
                                     : 'Descargando flujo multimedia...',
                         style: theme.textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.bold,
