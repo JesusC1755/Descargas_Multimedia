@@ -14,6 +14,7 @@ abstract class IMediaEngine {
     required String url,
     required StreamOption option,
     required String downloadDir,
+    String? customTitle,
   });
 
   /// Cancela la descarga en curso

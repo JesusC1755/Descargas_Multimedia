@@ -372,6 +372,7 @@ class _HomeScreenState extends State<HomeScreen> {
           url: _mediaInfo!.url,
           option: option,
           downloadDir: _downloadDirectory,
+          customTitle: _mediaInfo!.title,
         )
         .listen(
           (progress) {
@@ -419,44 +420,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Future<void> _pasteFromClipboardAction() async {
-    final data = await Clipboard.getData(Clipboard.kTextPlain);
-    final text = data?.text?.trim() ?? '';
-    if (text.isEmpty) return;
-
-    final validation = MediaUrlValidator.validate(text);
-    if (!validation.isValid) {
-      _urlController.text = text;
-      if (mounted) {
-        final theme = Theme.of(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            backgroundColor: theme.colorScheme.errorContainer,
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 4),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            content: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(Icons.info_outline_rounded, color: theme.colorScheme.onErrorContainer),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    validation.errorMessage ??
-                        'El texto del portapapeles no corresponde a un video compatible.',
-                    style: TextStyle(color: theme.colorScheme.onErrorContainer),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      }
-      return;
-    }
-
-    _analyzeUrl(validation.cleanUrl ?? text);
-  }
 
   @override
   Widget build(BuildContext context) {

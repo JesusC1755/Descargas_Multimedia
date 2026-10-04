@@ -12,6 +12,28 @@ class DesktopProcessEngine implements IMediaEngine {
   Process? _activeProcess;
   Process? _activeTranscodeProcess;
 
+  static final RegExp _emojiRegex = RegExp(
+    r'[\u{1F600}-\u{1F64F}' // Emoticons
+    r'\u{1F300}-\u{1F5FF}' // Misc Symbols and Pictographs (🎦, 🔥, etc.)
+    r'\u{1F680}-\u{1F6FF}' // Transport and Map
+    r'\u{1F1E0}-\u{1F1FF}' // Flags
+    r'\u{1F900}-\u{1F9FF}' // Supplemental Symbols and Pictographs (🤯, etc.)
+    r'\u{1FA70}-\u{1FAFF}' // Symbols and Pictographs Extended-A
+    r'\u{1F780}-\u{1F7FF}' // Geometric Shapes Extended
+    r'\u{2600}-\u{26FF}'   // Misc Symbols (⚡, ☕, ⚠️, ❤️, etc.)
+    r'\u{2700}-\u{27BF}'   // Dingbats (✨, ❌, etc.)
+    r'\u{2300}-\u{23FF}'   // Misc Technical (⌚, ⌛, etc.)
+    r'\u{2B50}\u{2B55}'    // Stars, circles
+    r'\u{25AA}-\u{25FE}'   // Geometric shapes
+    r'\u{2934}\u{2935}'    // Arrows
+    r'\u{200D}'            // ZWJ
+    r'\u{FE00}-\u{FE0F}'   // Variation selectors
+    r'\u{E0020}-\u{E007F}' // Tags
+    r'\u{20E3}'            // Combining enclosing keycap
+    r']+',
+    unicode: true,
+  );
+
   String _getYtDlpExecutable() {
     final home = Platform.environment['HOME'] ?? '';
     final localBin = '$home/.local/bin/yt-dlp';
@@ -95,7 +117,8 @@ class DesktopProcessEngine implements IMediaEngine {
         throw Exception('Estructura de metadatos inesperada de yt-dlp');
       }
 
-      final title = rawJson['title']?.toString() ?? 'Sin título';
+      final rawTitle = rawJson['title']?.toString() ?? 'Sin título';
+      final title = _sanitizeTitle(rawTitle);
       final uploader = (rawJson['uploader'] ?? rawJson['channel'] ?? rawJson['creator'] ?? rawJson['artist'])?.toString();
       final thumbnail = rawJson['thumbnail']?.toString();
       final duration = (rawJson['duration'] as num?)?.round();
@@ -270,11 +293,59 @@ class DesktopProcessEngine implements IMediaEngine {
     }
   }
 
+  String _sanitizeTitle(String rawTitle) {
+    var cleaned = rawTitle.trim();
+
+    // 1. Elimina prefijos típicos de métricas en Facebook / Reels / redes sociales:
+    // Ej: "7.4K views · 265 reactions |", "13K views · 900 reactions ｜"
+    cleaned = cleaned.replaceFirst(
+      RegExp(
+        r'^[\d\.,]+[kKmMbB]?\s*(?:views?|reproducciones|visualizaciones)\s*[·•|\-—\uff5c]\s*[\d\.,]+[kKmMbB]?\s*(?:reactions?|reacciones|likes|me gusta)\s*[·•|\-—\uff5c]\s*',
+        caseSensitive: false,
+      ),
+      '',
+    );
+
+    // 2. Elimina hashtags (#animereels, #anime, #luffy, etc.)
+    cleaned = cleaned.replaceAll(
+      RegExp(r'#[\w\u00C0-\u017F\d_]+', caseSensitive: false),
+      '',
+    );
+
+    // 3. Elimina emojis y símbolos gráficos
+    cleaned = cleaned.replaceAll(_emojiRegex, '');
+
+    // 4. Elimina sufijo de página o canal al final tras limpiar hashtags (ej. "| Cad.mons" o "｜ Dioses del Fandom")
+    cleaned = cleaned.replaceFirst(
+      RegExp(r'\s*[|｜]\s*[\w\s\.\-_]{1,30}\s*$', caseSensitive: false),
+      '',
+    );
+
+    // 5. Colapsa espacios múltiples y recorta extremos
+    cleaned = cleaned.replaceAll(RegExp(r'\s+'), ' ').trim();
+
+    // 6. Elimina separadores colgantes al inicio o al final
+    cleaned = cleaned.replaceAll(RegExp(r'^[|｜\s]+|[|｜\s]+$'), '').trim();
+
+    return cleaned.isNotEmpty ? cleaned : rawTitle;
+  }
+
+  String _sanitizeFilename(String title) {
+    var safe = title.replaceAll(_emojiRegex, '');
+    safe = safe.replaceAll(RegExp(r'[\\/:*?"<>|\x00-\x1F]'), '_');
+    safe = safe.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (safe.length > 180) {
+      safe = safe.substring(0, 180).trim();
+    }
+    return safe.isNotEmpty ? safe : 'video';
+  }
+
   @override
   Stream<DownloadProgress> download({
     required String url,
     required StreamOption option,
     required String downloadDir,
+    String? customTitle,
   }) {
     final controller = StreamController<DownloadProgress>();
     DownloadProgress currentProgress = const DownloadProgress(
@@ -286,16 +357,36 @@ class DesktopProcessEngine implements IMediaEngine {
 
     final bin = _getYtDlpExecutable();
     final jsArgs = _getJsRuntimeArgs();
+
+    final outputTemplate = (customTitle != null && customTitle.trim().isNotEmpty)
+        ? '${_sanitizeFilename(customTitle.trim())}.%(ext)s'
+        : '%(title)s.%(ext)s';
+
     final args = <String>[
       ...jsArgs,
       url,
       '--newline',
+      // Limpieza de métricas en metadatos
+      '--replace-in-metadata',
+      'title',
+      r'^[\d\.,]+[kKmMbB]?\s*(?:views?|reproducciones|visualizaciones)\s*[·•|\-—\uff5c]\s*[\d\.,]+[kKmMbB]?\s*(?:reactions?|reacciones|likes|me gusta)\s*[·•|\-—\uff5c]\s*',
+      '',
+      // Limpieza de hashtags en metadatos
+      '--replace-in-metadata',
+      'title',
+      r'#[\w\u00C0-\u017F\d_]+',
+      '',
+      // Limpieza de emojis en metadatos
+      '--replace-in-metadata',
+      'title',
+      r'[\U0001F300-\U0001FAFF\U00002600-\U000027BF\U00002300-\U000023FF\U00002B50-\U00002B55]',
+      '',
       '--progress-template',
       'download:%(progress._percent_str)s|%(progress._speed_str)s|%(progress._eta_str)s|%(progress._total_bytes_str)s',
       '-P',
       downloadDir,
       '-o',
-      '%(title)s.%(ext)s',
+      outputTemplate,
       '--print',
       'after_move:[FINAL_PATH]:%(filepath)s',
     ];
