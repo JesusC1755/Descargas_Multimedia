@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:talker_flutter/talker_flutter.dart';
+import '../../core/logging/app_logger.dart';
 import '../../domain/models/download_progress.dart';
 
 class DownloadProgressCard extends StatelessWidget {
@@ -10,6 +13,24 @@ class DownloadProgressCard extends StatelessWidget {
     required this.progress,
     required this.onCancel,
   });
+
+  void _copyErrorToClipboard(BuildContext context, String message) {
+    Clipboard.setData(ClipboardData(text: message));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Error copiado al portapapeles'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
+  void _openTalkerScreen(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => TalkerScreen(talker: talker),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -118,9 +139,42 @@ class DownloadProgressCard extends StatelessWidget {
                 ],
               ),
             ] else ...[
-              Text(
-                progress.errorMessage ?? 'Ocurrió un error inesperado al procesar el enlace.',
-                style: TextStyle(color: theme.colorScheme.error),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.errorContainer.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: theme.colorScheme.error.withValues(alpha: 0.3),
+                  ),
+                ),
+                child: SelectableText(
+                  progress.errorMessage ?? 'Ocurrió un error inesperado al procesar el enlace.',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontFamily: 'monospace',
+                    color: theme.colorScheme.error,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  FilledButton.tonalIcon(
+                    onPressed: () => _copyErrorToClipboard(
+                      context,
+                      progress.errorMessage ?? 'Error desconocido',
+                    ),
+                    icon: const Icon(Icons.copy_rounded, size: 16),
+                    label: const Text('Copiar Error'),
+                  ),
+                  const SizedBox(width: 10),
+                  OutlinedButton.icon(
+                    onPressed: () => _openTalkerScreen(context),
+                    icon: const Icon(Icons.terminal_rounded, size: 16),
+                    label: const Text('Ver Consola de Logs'),
+                  ),
+                ],
               ),
             ],
           ],

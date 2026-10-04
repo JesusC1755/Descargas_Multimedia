@@ -3,7 +3,9 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:talker_flutter/talker_flutter.dart';
 
+import '../../core/logging/app_logger.dart';
 import '../../domain/models/download_progress.dart';
 import '../../domain/models/media_info.dart';
 import '../../domain/models/stream_option.dart';
@@ -77,6 +79,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final dir = await getDownloadsDirectory();
       if (dir != null && mounted) {
         setState(() => _downloadDirectory = dir.path);
+        talker.info('Carpeta de descargas detectada: ${dir.path}');
         return;
       }
     } catch (_) {}
@@ -88,6 +91,7 @@ class _HomeScreenState extends State<HomeScreen> {
     } else {
       if (mounted) setState(() => _downloadDirectory = '$home/Downloads');
     }
+    talker.info('Carpeta de descargas fallback: $_downloadDirectory');
   }
 
   Future<void> _analyzeUrl() async {
@@ -119,7 +123,17 @@ class _HomeScreenState extends State<HomeScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             backgroundColor: Theme.of(context).colorScheme.error,
-            content: Text('Error al analizar: $e'),
+            duration: const Duration(seconds: 5),
+            content: Text(
+              'Error al analizar: $e',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            action: SnackBarAction(
+              textColor: Colors.white,
+              label: 'Ver Log',
+              onPressed: _openLogs,
+            ),
           ),
         );
       }
@@ -183,6 +197,14 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  void _openLogs() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => TalkerScreen(talker: talker),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -210,8 +232,13 @@ class _HomeScreenState extends State<HomeScreen> {
               label: 'FFmpeg',
               isOk: _hasFFmpeg,
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: 8),
           ],
+          IconButton(
+            tooltip: 'Consola de Logs (Talker)',
+            icon: const Icon(Icons.terminal_rounded),
+            onPressed: _openLogs,
+          ),
           IconButton(
             tooltip: widget.isDarkMode ? 'Modo Claro' : 'Modo Oscuro',
             icon: Icon(

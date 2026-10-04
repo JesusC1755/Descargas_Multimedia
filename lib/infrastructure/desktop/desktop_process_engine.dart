@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import '../../core/logging/app_logger.dart';
 import '../../domain/models/download_progress.dart';
 import '../../domain/models/media_info.dart';
 import '../../domain/models/stream_option.dart';
@@ -14,8 +15,15 @@ class DesktopProcessEngine implements IMediaEngine {
   Future<bool> isYtDlpAvailable() async {
     try {
       final res = await Process.run('yt-dlp', ['--version']);
-      return res.exitCode == 0;
-    } catch (_) {
+      final available = res.exitCode == 0;
+      if (available) {
+        talker.info('yt-dlp detectado versión: ${res.stdout.toString().trim()}');
+      } else {
+        talker.warning('yt-dlp falló con código ${res.exitCode}: ${res.stderr}');
+      }
+      return available;
+    } catch (e, st) {
+      talker.error('Error al verificar yt-dlp en el sistema', e, st);
       return false;
     }
   }
@@ -24,117 +32,132 @@ class DesktopProcessEngine implements IMediaEngine {
   Future<bool> isFFmpegAvailable() async {
     try {
       final res = await Process.run('ffmpeg', ['-version']);
-      return res.exitCode == 0;
-    } catch (_) {
+      final available = res.exitCode == 0;
+      if (available) {
+        talker.info('FFmpeg detectado correctamente en el sistema.');
+      } else {
+        talker.warning('FFmpeg no está accesible.');
+      }
+      return available;
+    } catch (e, st) {
+      talker.error('Error al verificar FFmpeg en el sistema', e, st);
       return false;
     }
   }
 
   @override
   Future<MediaInfo> analyzeUrl(String url) async {
-    final process = await Process.run(
-      'yt-dlp',
-      ['--no-playlist', '--dump-json', url],
-    );
+    talker.info('Iniciando análisis de URL: $url');
+    final args = ['--no-playlist', '--dump-json', url];
+
+    final process = await Process.run('yt-dlp', args);
 
     if (process.exitCode != 0) {
-      final err = process.stderr.toString();
-      throw Exception('Error al analizar URL con yt-dlp: $err');
+      final err = process.stderr.toString().trim();
+      talker.error('yt-dlp falló al analizar URL (código ${process.exitCode})', err);
+      throw Exception(err.isNotEmpty ? err : 'Error desconocido al analizar URL');
     }
 
-    final rawJson = jsonDecode(process.stdout.toString()) as Map<String, dynamic>;
+    try {
+      final rawJson = jsonDecode(process.stdout.toString()) as Map<String, dynamic>;
 
-    final title = rawJson['title'] as String? ?? 'Sin título';
-    final uploader = rawJson['uploader'] as String? ?? rawJson['channel'] as String?;
-    final thumbnail = rawJson['thumbnail'] as String?;
-    final duration = rawJson['duration'] as int?;
+      final title = rawJson['title'] as String? ?? 'Sin título';
+      final uploader = rawJson['uploader'] as String? ?? rawJson['channel'] as String?;
+      final thumbnail = rawJson['thumbnail'] as String?;
+      final duration = rawJson['duration'] as int?;
 
-    final formats = rawJson['formats'] as List<dynamic>? ?? [];
+      final formats = rawJson['formats'] as List<dynamic>? ?? [];
 
-    final Set<int> availableHeights = {};
-    for (final f in formats) {
-      if (f is Map<String, dynamic>) {
-        final height = f['height'] as int?;
-        final vcodec = f['vcodec'] as String?;
-        if (height != null && height > 0 && vcodec != null && vcodec != 'none') {
-          availableHeights.add(height);
+      final Set<int> availableHeights = {};
+      for (final f in formats) {
+        if (f is Map<String, dynamic>) {
+          final height = f['height'] as int?;
+          final vcodec = f['vcodec'] as String?;
+          if (height != null && height > 0 && vcodec != null && vcodec != 'none') {
+            availableHeights.add(height);
+          }
         }
       }
-    }
 
-    final sortedHeights = availableHeights.toList()..sort((a, b) => b.compareTo(a));
+      final sortedHeights = availableHeights.toList()..sort((a, b) => b.compareTo(a));
 
-    final videoOptions = <StreamOption>[];
-    for (final h in sortedHeights) {
-      String label = '${h}p';
-      if (h >= 2160) {
-        label = '4K ($label)';
-      } else if (h >= 1440) {
-        label = '2K QHD ($label)';
-      } else if (h >= 1080) {
-        label = 'Full HD ($label)';
-      } else if (h >= 720) {
-        label = 'HD ($label)';
+      final videoOptions = <StreamOption>[];
+      for (final h in sortedHeights) {
+        String label = '${h}p';
+        if (h >= 2160) {
+          label = '4K ($label)';
+        } else if (h >= 1440) {
+          label = '2K QHD ($label)';
+        } else if (h >= 1080) {
+          label = 'Full HD ($label)';
+        } else if (h >= 720) {
+          label = 'HD ($label)';
+        }
+
+        videoOptions.add(
+          StreamOption(
+            formatId: 'bestvideo[height<=$h]+bestaudio/best[height<=$h]/best',
+            label: label,
+            extension: 'mp4',
+            height: h,
+            isAudioOnly: false,
+          ),
+        );
       }
 
-      videoOptions.add(
+      if (videoOptions.isEmpty) {
+        videoOptions.add(
+          const StreamOption(
+            formatId: 'bestvideo+bestaudio/best',
+            label: 'Mejor Calidad Disponible',
+            extension: 'mp4',
+            isAudioOnly: false,
+          ),
+        );
+      }
+
+      final audioOptions = const <StreamOption>[
         StreamOption(
-          formatId: 'bestvideo[height<=$h]+bestaudio/best[height<=$h]/best',
-          label: label,
-          extension: 'mp4',
-          height: h,
-          isAudioOnly: false,
+          formatId: 'bestaudio',
+          label: 'MP3 (Máxima Calidad 320 kbps)',
+          extension: 'mp3',
+          isAudioOnly: true,
         ),
-      );
-    }
-
-    if (videoOptions.isEmpty) {
-      videoOptions.add(
-        const StreamOption(
-          formatId: 'bestvideo+bestaudio/best',
-          label: 'Mejor Calidad Disponible',
-          extension: 'mp4',
-          isAudioOnly: false,
+        StreamOption(
+          formatId: 'bestaudio[ext=m4a]/bestaudio',
+          label: 'M4A (AAC Original)',
+          extension: 'm4a',
+          isAudioOnly: true,
         ),
+        StreamOption(
+          formatId: 'bestaudio',
+          label: 'FLAC (Lossless sin compresión)',
+          extension: 'flac',
+          isAudioOnly: true,
+        ),
+        StreamOption(
+          formatId: 'bestaudio',
+          label: 'Opus (Alta Fidelidad / Eficiente)',
+          extension: 'opus',
+          isAudioOnly: true,
+        ),
+      ];
+
+      talker.info('Análisis completado: "$title" - ${videoOptions.length} calidades encontradas');
+
+      return MediaInfo(
+        url: url,
+        title: title,
+        uploader: uploader,
+        thumbnailUrl: thumbnail,
+        durationSeconds: duration,
+        videoOptions: videoOptions,
+        audioOptions: audioOptions,
       );
+    } catch (e, st) {
+      talker.error('Error parseando JSON de metadatos de yt-dlp', e, st);
+      rethrow;
     }
-
-    final audioOptions = const <StreamOption>[
-      StreamOption(
-        formatId: 'bestaudio',
-        label: 'MP3 (Máxima Calidad 320 kbps)',
-        extension: 'mp3',
-        isAudioOnly: true,
-      ),
-      StreamOption(
-        formatId: 'bestaudio[ext=m4a]/bestaudio',
-        label: 'M4A (AAC Original)',
-        extension: 'm4a',
-        isAudioOnly: true,
-      ),
-      StreamOption(
-        formatId: 'bestaudio',
-        label: 'FLAC (Lossless sin compresión)',
-        extension: 'flac',
-        isAudioOnly: true,
-      ),
-      StreamOption(
-        formatId: 'bestaudio',
-        label: 'Opus (Alta Fidelidad / Eficiente)',
-        extension: 'opus',
-        isAudioOnly: true,
-      ),
-    ];
-
-    return MediaInfo(
-      url: url,
-      title: title,
-      uploader: uploader,
-      thumbnailUrl: thumbnail,
-      durationSeconds: duration,
-      videoOptions: videoOptions,
-      audioOptions: audioOptions,
-    );
   }
 
   @override
@@ -147,7 +170,7 @@ class DesktopProcessEngine implements IMediaEngine {
     DownloadProgress currentProgress = const DownloadProgress(
       status: DownloadStatus.downloading,
       percentage: 0.0,
-      currentStep: 'Iniciando descarga...',
+      currentStep: 'Iniciando proceso de descarga...',
     );
     controller.add(currentProgress);
 
@@ -179,6 +202,9 @@ class DesktopProcessEngine implements IMediaEngine {
       ]);
     }
 
+    talker.info('Lanzando comando yt-dlp: yt-dlp ${args.join(" ")}');
+    final stderrBuffer = StringBuffer();
+
     Process.start('yt-dlp', args).then((process) {
       _activeProcess = process;
 
@@ -204,12 +230,15 @@ class DesktopProcessEngine implements IMediaEngine {
             controller.add(currentProgress);
           }
         } else if (line.contains('[Merger]') || line.contains('[ExtractAudio]') || line.contains('[Fixup')) {
+          talker.info('[FFmpeg/Muxer] $line');
           currentProgress = currentProgress.copyWith(
             status: DownloadStatus.processing,
             percentage: 99.0,
             currentStep: 'Procesando y empaquetando con FFmpeg...',
           );
           controller.add(currentProgress);
+        } else if (line.trim().isNotEmpty) {
+          talker.debug('[yt-dlp stdout] $line');
         }
       });
 
@@ -217,11 +246,15 @@ class DesktopProcessEngine implements IMediaEngine {
           .transform(utf8.decoder)
           .transform(const LineSplitter())
           .listen((line) {
-        // Logging opcional
+        if (line.trim().isNotEmpty) {
+          stderrBuffer.writeln(line);
+          talker.warning('[yt-dlp stderr] $line');
+        }
       });
 
       process.exitCode.then((code) {
         if (code == 0) {
+          talker.info('Descarga finalizada con éxito (exitCode 0)');
           controller.add(
             currentProgress.copyWith(
               status: DownloadStatus.completed,
@@ -230,16 +263,23 @@ class DesktopProcessEngine implements IMediaEngine {
             ),
           );
         } else {
+          final errorMsg = stderrBuffer.toString().trim();
+          final formattedError = errorMsg.isNotEmpty
+              ? errorMsg
+              : 'El proceso yt-dlp finalizó con código de error: $code';
+
+          talker.error('Descarga fallida (exitCode $code)', formattedError);
           controller.add(
             currentProgress.copyWith(
               status: DownloadStatus.error,
-              errorMessage: 'El proceso finalizó con código de error: $code',
+              errorMessage: formattedError,
             ),
           );
         }
         controller.close();
       });
-    }).catchError((err) {
+    }).catchError((err, st) {
+      talker.error('Excepción al invocar subproceso de yt-dlp', err, st);
       controller.add(
         DownloadProgress(
           status: DownloadStatus.error,
@@ -254,6 +294,7 @@ class DesktopProcessEngine implements IMediaEngine {
 
   @override
   void cancel() {
+    talker.warning('Cancelando proceso de descarga activo a petición del usuario.');
     _activeProcess?.kill(ProcessSignal.sigterm);
     _activeProcess = null;
   }
