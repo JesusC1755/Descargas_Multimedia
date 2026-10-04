@@ -1,26 +1,182 @@
 import 'package:flutter/material.dart';
 
-/// Plataformas multimedia compatibles reconocidas por el analizador.
+/// Plataformas multimedia compatibles reconocidas por el analizador
+/// con sus colores y estilos de identidad de marca característicos.
 enum MediaPlatform {
-  youtube('YouTube', Icons.smart_display_rounded),
-  tiktok('TikTok', Icons.music_video_rounded),
-  instagram('Instagram', Icons.camera_alt_rounded),
-  twitter('X / Twitter', Icons.tag_rounded),
-  facebook('Facebook', Icons.facebook_rounded),
-  twitch('Twitch', Icons.videogame_asset_rounded),
-  reddit('Reddit', Icons.forum_rounded),
-  vimeo('Vimeo', Icons.movie_filter_rounded),
-  dailymotion('Dailymotion', Icons.play_arrow_rounded),
-  soundCloud('SoundCloud', Icons.graphic_eq_rounded),
-  threads('Threads', Icons.alternate_email_rounded),
-  pinterest('Pinterest', Icons.push_pin_rounded),
-  directVideo('Video Directo', Icons.video_file_rounded),
-  unknown('Desconocido', Icons.link_off_rounded);
+  youtube(
+    'YouTube',
+    Icons.smart_display_rounded,
+    brandColor: Color(0xFFFF0000),
+    badgeTextColor: Color(0xFFFEE2E2),
+    badgeBackgroundColor: Color(0x33FF0000),
+    badgeBorderColor: Color(0x80FF0000),
+    snackbarContainerColor: Color(0xFF450A0A),
+  ),
+  tiktok(
+    'TikTok',
+    Icons.music_video_rounded,
+    brandColor: Color(0xFF00F2FE),
+    secondaryColor: Color(0xFFFE2C55),
+    badgeTextColor: Color(0xFFFFFFFF),
+    badgeBackgroundColor: Color(0x2B00F2FE),
+    badgeBorderColor: Color(0x8000F2FE),
+    snackbarContainerColor: Color(0xFF0F172A),
+  ),
+  instagram(
+    'Instagram',
+    Icons.camera_alt_rounded,
+    brandColor: Color(0xFFE1306C),
+    secondaryColor: Color(0xFFF77737),
+    badgeTextColor: Color(0xFFFCE7F3),
+    badgeBackgroundColor: Color(0x33E1306C),
+    badgeBorderColor: Color(0x80E1306C),
+    snackbarContainerColor: Color(0xFF701A75),
+  ),
+  twitter(
+    'X / Twitter',
+    Icons.tag_rounded,
+    brandColor: Color(0xFF1D9BF0),
+    badgeTextColor: Color(0xFFE0F2FE),
+    badgeBackgroundColor: Color(0x331D9BF0),
+    badgeBorderColor: Color(0x801D9BF0),
+    snackbarContainerColor: Color(0xFF0C4A6E),
+  ),
+  facebook(
+    'Facebook',
+    Icons.facebook_rounded,
+    brandColor: Color(0xFF1877F2),
+    badgeTextColor: Color(0xFFDBEAFE),
+    badgeBackgroundColor: Color(0x331877F2),
+    badgeBorderColor: Color(0x801877F2),
+    snackbarContainerColor: Color(0xFF172554),
+  ),
+  twitch(
+    'Twitch',
+    Icons.videogame_asset_rounded,
+    brandColor: Color(0xFF9146FF),
+    badgeTextColor: Color(0xFFEDE9FE),
+    badgeBackgroundColor: Color(0x339146FF),
+    badgeBorderColor: Color(0x809146FF),
+    snackbarContainerColor: Color(0xFF4C1D95),
+  ),
+  reddit(
+    'Reddit',
+    Icons.forum_rounded,
+    brandColor: Color(0xFFFF4500),
+    badgeTextColor: Color(0xFFFFEDD5),
+    badgeBackgroundColor: Color(0x33FF4500),
+    badgeBorderColor: Color(0x80FF4500),
+    snackbarContainerColor: Color(0xFF7C2D12),
+  ),
+  vimeo(
+    'Vimeo',
+    Icons.movie_filter_rounded,
+    brandColor: Color(0xFF1AB7EA),
+    badgeTextColor: Color(0xFFE0F2FE),
+    badgeBackgroundColor: Color(0x331AB7EA),
+    badgeBorderColor: Color(0x801AB7EA),
+    snackbarContainerColor: Color(0xFF075985),
+  ),
+  dailymotion(
+    'Dailymotion',
+    Icons.play_arrow_rounded,
+    brandColor: Color(0xFF0066DC),
+    badgeTextColor: Color(0xFFDBEAFE),
+    badgeBackgroundColor: Color(0x330066DC),
+    badgeBorderColor: Color(0x800066DC),
+    snackbarContainerColor: Color(0xFF1E3A8A),
+  ),
+  soundCloud(
+    'SoundCloud',
+    Icons.graphic_eq_rounded,
+    brandColor: Color(0xFFFF5500),
+    badgeTextColor: Color(0xFFFFEDD5),
+    badgeBackgroundColor: Color(0x33FF5500),
+    badgeBorderColor: Color(0x80FF5500),
+    snackbarContainerColor: Color(0xFF7C2D12),
+  ),
+  threads(
+    'Threads',
+    Icons.alternate_email_rounded,
+    brandColor: Color(0xFFFFFFFF),
+    badgeTextColor: Color(0xFFF8FAFC),
+    badgeBackgroundColor: Color(0x26FFFFFF),
+    badgeBorderColor: Color(0x66FFFFFF),
+    snackbarContainerColor: Color(0xFF1E293B),
+  ),
+  pinterest(
+    'Pinterest',
+    Icons.push_pin_rounded,
+    brandColor: Color(0xFFE60023),
+    badgeTextColor: Color(0xFFFEE2E2),
+    badgeBackgroundColor: Color(0x33E60023),
+    badgeBorderColor: Color(0x80E60023),
+    snackbarContainerColor: Color(0xFF881337),
+  ),
+  directVideo(
+    'Video Directo',
+    Icons.video_file_rounded,
+    brandColor: Color(0xFF10B981),
+    badgeTextColor: Color(0xFFD1FAE5),
+    badgeBackgroundColor: Color(0x3310B981),
+    badgeBorderColor: Color(0x8010B981),
+    snackbarContainerColor: Color(0xFF064E3B),
+  ),
+  unknown(
+    'Desconocido',
+    Icons.link_off_rounded,
+    brandColor: Color(0xFFA855F7),
+    badgeTextColor: Color(0xFFE9D5FF),
+    badgeBackgroundColor: Color(0x33A855F7),
+    badgeBorderColor: Color(0x80A855F7),
+    snackbarContainerColor: Color(0xFF581C87),
+  );
 
   final String displayName;
   final IconData icon;
+  final Color brandColor;
+  final Color? secondaryColor;
+  final Color badgeTextColor;
+  final Color badgeBackgroundColor;
+  final Color badgeBorderColor;
+  final Color snackbarContainerColor;
 
-  const MediaPlatform(this.displayName, this.icon);
+  const MediaPlatform(
+    this.displayName,
+    this.icon, {
+    required this.brandColor,
+    this.secondaryColor,
+    required this.badgeTextColor,
+    required this.badgeBackgroundColor,
+    required this.badgeBorderColor,
+    required this.snackbarContainerColor,
+  });
+
+  /// Gradiente opcional característico para plataformas con identidad degradada (Instagram, TikTok).
+  Gradient? get badgeGradient {
+    if (this == MediaPlatform.instagram) {
+      return const LinearGradient(
+        colors: [
+          Color(0xFF833AB4),
+          Color(0xFFFD1D1D),
+          Color(0xFFF77737),
+        ],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      );
+    }
+    if (this == MediaPlatform.tiktok) {
+      return const LinearGradient(
+        colors: [
+          Color(0xFF00F2FE),
+          Color(0xFFFE2C55),
+        ],
+        begin: Alignment.centerLeft,
+        end: Alignment.centerRight,
+      );
+    }
+    return null;
+  }
 }
 
 /// Resultado de la validación y sanitización de una URL multimedia.

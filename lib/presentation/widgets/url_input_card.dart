@@ -38,19 +38,65 @@ class UrlInputCard extends StatelessWidget {
 
     final theme = Theme.of(context);
     if (validation.isValid) {
+      final platform = validation.platform;
+      ScaffoldMessenger.of(context).clearSnackBars();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Row(
             children: [
-              Icon(validation.platform.icon, size: 18, color: Colors.white),
-              const SizedBox(width: 8),
-              Text('Enlace de ${validation.platformDisplayName} pegado'),
+              Container(
+                padding: const EdgeInsets.all(5),
+                decoration: BoxDecoration(
+                  color: platform.brandColor.withValues(alpha: 0.22),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: platform.brandColor.withValues(alpha: 0.45),
+                    width: 1,
+                  ),
+                ),
+                child: Icon(
+                  platform.icon,
+                  size: 16,
+                  color: platform == MediaPlatform.threads
+                      ? Colors.white
+                      : platform.brandColor,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: RichText(
+                  text: TextSpan(
+                    text: 'Enlace de ',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w400,
+                    ),
+                    children: [
+                      TextSpan(
+                        text: validation.platformDisplayName ?? platform.displayName,
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: platform.badgeTextColor,
+                        ),
+                      ),
+                      const TextSpan(text: ' pegado'),
+                    ],
+                  ),
+                ),
+              ),
             ],
           ),
-          backgroundColor: const Color(0xFF581C87),
+          backgroundColor: platform.snackbarContainerColor,
           behavior: SnackBarBehavior.floating,
           duration: const Duration(seconds: 2),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(
+              color: platform.brandColor.withValues(alpha: 0.45),
+              width: 1.1,
+            ),
+          ),
         ),
       );
     } else {
@@ -106,7 +152,9 @@ class UrlInputCard extends StatelessWidget {
                 border: Border.all(
                   color: validation != null && !validation.isValid
                       ? theme.colorScheme.error.withValues(alpha: 0.4)
-                      : Colors.white.withValues(alpha: 0.08),
+                      : (validation != null && validation.isValid
+                          ? validation.platform.brandColor.withValues(alpha: 0.28)
+                          : Colors.white.withValues(alpha: 0.08)),
                   width: 1.0,
                 ),
                 boxShadow: [
@@ -155,36 +203,7 @@ class UrlInputCard extends StatelessWidget {
                         ),
                         const Spacer(),
                         if (validation != null && validation.isValid)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4.5),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF581C87).withValues(alpha: 0.35),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: const Color(0xFFA855F7).withValues(alpha: 0.3),
-                                width: 1,
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  validation.platform.icon,
-                                  size: 14,
-                                  color: const Color(0xFFC084FC),
-                                ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  validation.platformDisplayName ?? '',
-                                  style: const TextStyle(
-                                    fontSize: 11.5,
-                                    fontWeight: FontWeight.w600,
-                                    color: Color(0xFFE9D5FF),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
+                          _buildPlatformBadge(validation),
                       ],
                     ),
                     const SizedBox(height: 14),
@@ -291,9 +310,15 @@ class UrlInputCard extends StatelessWidget {
           ),
           filled: true,
           fillColor: Colors.black.withValues(alpha: 0.45),
-          prefixIcon: const Icon(
-            Icons.play_arrow_outlined,
-            color: Color(0xFFA855F7),
+          prefixIcon: Icon(
+            validation != null && validation.isValid
+                ? validation.platform.icon
+                : Icons.play_arrow_outlined,
+            color: validation != null && validation.isValid
+                ? (validation.platform == MediaPlatform.threads
+                    ? Colors.white
+                    : validation.platform.brandColor)
+                : const Color(0xFFA855F7),
             size: 18,
           ),
           suffixIcon: controller.text.isNotEmpty
@@ -325,7 +350,9 @@ class UrlInputCard extends StatelessWidget {
             borderSide: BorderSide(
               color: hasError
                   ? const Color(0xFFF87171)
-                  : const Color(0xFFA855F7).withValues(alpha: 0.6),
+                  : (validation != null && validation.isValid
+                      ? validation.platform.brandColor.withValues(alpha: 0.8)
+                      : const Color(0xFFA855F7).withValues(alpha: 0.6)),
               width: 1.5,
             ),
           ),
@@ -335,6 +362,54 @@ class UrlInputCard extends StatelessWidget {
             onAnalyze();
           }
         },
+      ),
+    );
+  }
+
+  /// Insignia con el estilo y color característico de la plataforma detectada.
+  Widget _buildPlatformBadge(MediaUrlValidationResult validation) {
+    final platform = validation.platform;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOutCubic,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4.5),
+      decoration: BoxDecoration(
+        color: platform.badgeBackgroundColor,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: platform.badgeBorderColor,
+          width: 1.2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: platform.brandColor.withValues(alpha: 0.28),
+            blurRadius: 10,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            platform.icon,
+            size: 14,
+            color: platform == MediaPlatform.threads
+                ? Colors.white
+                : platform.brandColor,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            validation.platformDisplayName ?? platform.displayName,
+            style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+              color: platform.badgeTextColor,
+              letterSpacing: 0.1,
+            ),
+          ),
+        ],
       ),
     );
   }

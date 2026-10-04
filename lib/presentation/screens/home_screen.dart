@@ -13,6 +13,7 @@ import '../../domain/models/media_info.dart';
 import '../../domain/models/stream_option.dart';
 import '../../domain/ports/media_engine_port.dart';
 import '../../infrastructure/desktop/desktop_process_engine.dart';
+import '../widgets/ambient_mesh_background.dart';
 import '../widgets/download_progress_card.dart';
 import '../widgets/media_preview_card.dart';
 import '../widgets/media_preview_skeleton.dart';
@@ -477,10 +478,11 @@ class _HomeScreenState extends State<HomeScreen> {
       },
       child: Focus(
         autofocus: true,
-        child: Scaffold(
-          appBar: AppBar(
-            backgroundColor: Colors.transparent,
-            elevation: 0,
+        child: AmbientMeshBackground(
+          child: Scaffold(
+            appBar: AppBar(
+              backgroundColor: Colors.transparent,
+              elevation: 0,
             title: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -577,8 +579,8 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(width: 16),
             ],
           ),
-          backgroundColor: const Color(0xFF0B0B10),
-          body: LayoutBuilder(
+            backgroundColor: Colors.transparent,
+            body: LayoutBuilder(
             builder: (context, constraints) {
               final isDesktopWide = constraints.maxWidth >= 960;
 
@@ -664,8 +666,9 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
 
   Widget _buildDirectoryBar(BuildContext context, ThemeData theme) {
