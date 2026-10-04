@@ -15,34 +15,18 @@ void main() {
   });
 }
 
-class MediaDownloaderApp extends StatefulWidget {
+class MediaDownloaderApp extends StatelessWidget {
   const MediaDownloaderApp({super.key});
-
-  @override
-  State<MediaDownloaderApp> createState() => _MediaDownloaderAppState();
-}
-
-class _MediaDownloaderAppState extends State<MediaDownloaderApp> {
-  ThemeMode _themeMode = ThemeMode.dark;
-
-  void _toggleTheme() {
-    setState(() {
-      _themeMode = _themeMode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Media Downloader Desktop',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.lightTheme,
+      theme: AppTheme.darkTheme,
       darkTheme: AppTheme.darkTheme,
-      themeMode: _themeMode,
-      home: HomeScreen(
-        onToggleTheme: _toggleTheme,
-        isDarkMode: _themeMode == ThemeMode.dark,
-      ),
+      themeMode: ThemeMode.dark,
+      home: const HomeScreen(),
     );
   }
 }

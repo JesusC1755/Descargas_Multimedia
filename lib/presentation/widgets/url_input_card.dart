@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../core/theme/app_theme.dart';
 import '../../core/utils/media_url_validator.dart';
 
 /// Tarjeta de entrada y captura de URL con validación de fuentes de video en tiempo real.
@@ -330,25 +331,66 @@ class UrlInputCard extends StatelessWidget {
 
     return Tooltip(
       message: tooltipMessage,
-      child: FilledButton.icon(
-        onPressed: canAnalyze ? onAnalyze : null,
-        icon: isLoading
-            ? SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.2,
-                  color: theme.colorScheme.onPrimary,
-                ),
-              )
-            : const Icon(Icons.auto_awesome_rounded, size: 18),
-        label: Text(isLoading ? 'Analizando...' : 'Analizar'),
-        style: FilledButton.styleFrom(
-          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
-          shape: RoundedRectangleBorder(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        decoration: BoxDecoration(
+          gradient: canAnalyze ? AppTheme.analyzeGradient : null,
+          color: canAnalyze
+              ? null
+              : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: canAnalyze
+              ? [
+                  BoxShadow(
+                    color: const Color(0xFF9333EA).withValues(alpha: 0.38),
+                    blurRadius: 14,
+                    offset: const Offset(0, 3),
+                  ),
+                ]
+              : null,
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
             borderRadius: BorderRadius.circular(12),
+            onTap: canAnalyze ? onAnalyze : null,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (isLoading)
+                    const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.2,
+                        color: Colors.white,
+                      ),
+                    )
+                  else
+                    Icon(
+                      Icons.auto_awesome_rounded,
+                      size: 18,
+                      color: canAnalyze
+                          ? Colors.white
+                          : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+                    ),
+                  const SizedBox(width: 8),
+                  Text(
+                    isLoading ? 'Analizando...' : 'Analizar',
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: canAnalyze
+                          ? Colors.white
+                          : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+                      letterSpacing: 0.2,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
-          elevation: canAnalyze ? 1 : 0,
         ),
       ),
     );

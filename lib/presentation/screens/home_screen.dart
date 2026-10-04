@@ -13,8 +13,8 @@ import '../../domain/models/media_info.dart';
 import '../../domain/models/stream_option.dart';
 import '../../domain/ports/media_engine_port.dart';
 import '../../infrastructure/desktop/desktop_process_engine.dart';
+import '../widgets/ambient_mesh_background.dart';
 import '../widgets/download_progress_card.dart';
-import '../widgets/empty_state_card.dart';
 import '../widgets/media_preview_card.dart';
 import '../widgets/media_preview_skeleton.dart';
 import '../widgets/quality_selector_card.dart';
@@ -25,14 +25,7 @@ import '../widgets/url_input_card.dart';
 /// atajos de teclado de escritorio, layouts responsivos (Desktop vs Mobile)
 /// y el ciclo de vida de descargas.
 class HomeScreen extends StatefulWidget {
-  final VoidCallback onToggleTheme;
-  final bool isDarkMode;
-
-  const HomeScreen({
-    super.key,
-    required this.onToggleTheme,
-    required this.isDarkMode,
-  });
+  const HomeScreen({super.key});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -517,19 +510,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 icon: const Icon(Icons.terminal_rounded),
                 onPressed: _openLogs,
               ),
-              IconButton(
-                tooltip: widget.isDarkMode ? 'Cambiar a Modo Claro' : 'Cambiar a Modo Oscuro',
-                icon: Icon(
-                  widget.isDarkMode ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
-                ),
-                onPressed: widget.onToggleTheme,
-              ),
               const SizedBox(width: 8),
             ],
           ),
-          body: LayoutBuilder(
-            builder: (context, constraints) {
-              final isDesktopWide = constraints.maxWidth >= 960;
+          body: AmbientMeshBackground(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final isDesktopWide = constraints.maxWidth >= 960;
 
               return SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
@@ -603,12 +590,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           ],
                         ],
 
-                        // Estado Vacío Ilustrativo
-                        if (_mediaInfo == null && !_isAnalyzing && _downloadProgress == null) ...[
-                          EmptyStateCard(
-                            onPasteFromClipboard: _pasteFromClipboardAction,
-                          ),
-                        ],
+
                       ],
                     ),
                   ),
@@ -618,8 +600,9 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
 
   Widget _buildDirectoryBar(BuildContext context, ThemeData theme) {
