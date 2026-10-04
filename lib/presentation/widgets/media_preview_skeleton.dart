@@ -53,10 +53,12 @@ class _MediaPreviewSkeletonState extends State<MediaPreviewSkeleton>
 
         return Card(
           elevation: 0,
+          color: theme.colorScheme.surfaceContainerLow,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(18),
             side: BorderSide(
-              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
+              color: theme.colorScheme.outline.withValues(alpha: 0.35),
+              width: 1.2,
             ),
           ),
           child: Padding(

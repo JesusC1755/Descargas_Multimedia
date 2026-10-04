@@ -58,16 +58,17 @@ class DownloadProgressCard extends StatelessWidget {
         (progress.currentStep?.toLowerCase().contains('uniendo') ?? false);
 
     final borderColor = isDone
-        ? theme.colorScheme.tertiary.withValues(alpha: 0.6)
+        ? theme.colorScheme.tertiary
         : isError
-            ? theme.colorScheme.error.withValues(alpha: 0.6)
-            : theme.colorScheme.primary.withValues(alpha: 0.5);
+            ? theme.colorScheme.error
+            : theme.colorScheme.primary.withValues(alpha: 0.85);
 
     return Card(
       elevation: 2,
+      color: theme.colorScheme.surfaceContainerLow,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
-        side: BorderSide(color: borderColor, width: 1.5),
+        side: BorderSide(color: borderColor, width: 1.6),
       ),
       child: Padding(
         padding: const EdgeInsets.all(20.0),

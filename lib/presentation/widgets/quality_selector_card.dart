@@ -59,10 +59,12 @@ class _QualitySelectorCardState extends State<QualitySelectorCard> {
 
     return Card(
       elevation: 1,
+      color: theme.colorScheme.surfaceContainerLow,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
         side: BorderSide(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.55),
+          color: theme.colorScheme.outline.withValues(alpha: 0.35),
+          width: 1.2,
         ),
       ),
       child: Padding(
@@ -298,8 +300,8 @@ class _OptionTile extends StatelessWidget {
           border: Border.all(
             color: isSelected
                 ? theme.colorScheme.primary
-                : theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-            width: isSelected ? 2 : 1,
+                : theme.colorScheme.outline.withValues(alpha: 0.3),
+            width: isSelected ? 2 : 1.2,
           ),
         ),
         child: Row(

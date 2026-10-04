@@ -46,12 +46,13 @@ class UrlInputCard extends StatelessWidget {
         final isCompact = constraints.maxWidth < 580;
 
         return Card(
-          elevation: 0,
-          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.45),
+          elevation: 1,
+          color: theme.colorScheme.surfaceContainerLow,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(18),
             side: BorderSide(
-              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+              color: theme.colorScheme.outline.withValues(alpha: 0.35),
+              width: 1.2,
             ),
           ),
           child: Padding(
