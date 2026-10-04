@@ -15,9 +15,11 @@ class EmptyStateCard extends StatelessWidget {
     _PlatformTag(name: 'TikTok', icon: Icons.music_video_rounded),
     _PlatformTag(name: 'Instagram', icon: Icons.camera_alt_rounded),
     _PlatformTag(name: 'Twitter / X', icon: Icons.tag_rounded),
-    _PlatformTag(name: 'SoundCloud', icon: Icons.graphic_eq_rounded),
+    _PlatformTag(name: 'Facebook', icon: Icons.facebook_rounded),
     _PlatformTag(name: 'Twitch', icon: Icons.videogame_asset_rounded),
+    _PlatformTag(name: 'Reddit', icon: Icons.forum_rounded),
     _PlatformTag(name: 'Vimeo', icon: Icons.movie_filter_rounded),
+    _PlatformTag(name: 'SoundCloud', icon: Icons.graphic_eq_rounded),
   ];
 
   @override
