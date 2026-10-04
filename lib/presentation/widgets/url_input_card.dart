@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../core/theme/app_theme.dart';
 import '../../core/utils/media_url_validator.dart';
 
-/// Tarjeta de entrada y captura de URL con validación de fuentes de video en tiempo real.
-/// Restringe el análisis a plataformas multimedia soportadas y archivos directos,
-/// proveyendo retroalimentación visual inmediata antes de invocar subprocesos.
+/// Tarjeta de entrada y captura de URL con diseño Bento y validación en tiempo real.
+/// Implementa con exactitud el diseño de [design.html] y la captura proporcionada:
+/// - Contenedor con gradiente oscuro y bordes ultra sutiles.
+/// - Encabezado con icono violeta y badge de plataforma detectada (YouTube, etc.).
+/// - Campo con tipografía monoespaciada, icono chevron púrpura y botón de limpieza.
+/// - Botón "Pegar" con icono púrpura y acabado translúcido.
+/// - Botón "Analizar" con gradiente horizontal vibrante (Púrpura -> Índigo -> Cian) y resplandor.
 class UrlInputCard extends StatelessWidget {
   final TextEditingController controller;
   final bool isLoading;
@@ -39,12 +42,12 @@ class UrlInputCard extends StatelessWidget {
         SnackBar(
           content: Row(
             children: [
-              Icon(validation.platform.icon, size: 18, color: theme.colorScheme.onPrimaryContainer),
+              Icon(validation.platform.icon, size: 18, color: Colors.white),
               const SizedBox(width: 8),
               Text('Enlace de ${validation.platformDisplayName} pegado'),
             ],
           ),
-          backgroundColor: theme.colorScheme.primaryContainer,
+          backgroundColor: const Color(0xFF581C87),
           behavior: SnackBarBehavior.floating,
           duration: const Duration(seconds: 2),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -89,64 +92,94 @@ class UrlInputCard extends StatelessWidget {
           builder: (context, constraints) {
             final isCompact = constraints.maxWidth < 620;
 
-            return Card(
-              elevation: 1,
-              color: theme.colorScheme.surfaceContainerLow,
-              shape: RoundedRectangleBorder(
+            return Container(
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Color(0xFF14141E),
+                    Color(0xFF0F0F17),
+                  ],
+                ),
                 borderRadius: BorderRadius.circular(18),
-                side: BorderSide(
+                border: Border.all(
                   color: validation != null && !validation.isValid
                       ? theme.colorScheme.error.withValues(alpha: 0.4)
-                      : theme.colorScheme.outline.withValues(alpha: 0.35),
-                  width: 1.2,
+                      : Colors.white.withValues(alpha: 0.08),
+                  width: 1.0,
                 ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.35),
+                    blurRadius: 18,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
               ),
               child: Padding(
-                padding: const EdgeInsets.all(18.0),
+                padding: const EdgeInsets.all(16.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
+                    // Fila de Encabezado: Icono, Título e Indicador de Plataforma
                     Row(
                       children: [
                         Container(
-                          padding: const EdgeInsets.all(6),
+                          width: 28,
+                          height: 28,
                           decoration: BoxDecoration(
-                            color: theme.colorScheme.primaryContainer,
+                            color: const Color(0xFF9333EA).withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: const Color(0xFFA855F7).withValues(alpha: 0.3),
+                              width: 1,
+                            ),
                           ),
-                          child: Icon(
+                          child: const Icon(
                             Icons.link_rounded,
-                            size: 18,
-                            color: theme.colorScheme.onPrimaryContainer,
+                            size: 16,
+                            color: Color(0xFFC084FC),
                           ),
                         ),
                         const SizedBox(width: 10),
-                        Text(
+                        const Text(
                           'Dirección URL del video',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: -0.2,
+                          style: TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFFF1F5F9),
+                            letterSpacing: 0.1,
                           ),
                         ),
                         const Spacer(),
                         if (validation != null && validation.isValid)
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4.5),
                             decoration: BoxDecoration(
-                              color: theme.colorScheme.primaryContainer.withValues(alpha: 0.8),
-                              borderRadius: BorderRadius.circular(6),
+                              color: const Color(0xFF581C87).withValues(alpha: 0.35),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: const Color(0xFFA855F7).withValues(alpha: 0.3),
+                                width: 1,
+                              ),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(validation.platform.icon, size: 14, color: theme.colorScheme.primary),
-                                const SizedBox(width: 5),
+                                Icon(
+                                  validation.platform.icon,
+                                  size: 14,
+                                  color: const Color(0xFFC084FC),
+                                ),
+                                const SizedBox(width: 6),
                                 Text(
                                   validation.platformDisplayName ?? '',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                    color: theme.colorScheme.onPrimaryContainer,
+                                  style: const TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFFE9D5FF),
                                   ),
                                 ),
                               ],
@@ -155,36 +188,38 @@ class UrlInputCard extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 14),
+
+                    // Fila de Entrada URL y Botones de Acción
                     if (!isCompact)
                       Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           Expanded(
-                            child: _buildTextField(context, theme, validation),
+                            child: _buildTextField(context, validation),
                           ),
                           const SizedBox(width: 10),
-                          _buildPasteButton(context, theme),
+                          _buildPasteButton(context),
                           const SizedBox(width: 10),
-                          _buildAnalyzeButton(context, theme, canAnalyze: canAnalyze),
+                          _buildAnalyzeButton(canAnalyze: canAnalyze),
                         ],
                       )
                     else
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          _buildTextField(context, theme, validation),
+                          _buildTextField(context, validation),
                           const SizedBox(height: 10),
                           Row(
                             children: [
-                              Expanded(child: _buildPasteButton(context, theme)),
+                              Expanded(child: _buildPasteButton(context)),
                               const SizedBox(width: 10),
-                              Expanded(child: _buildAnalyzeButton(context, theme, canAnalyze: canAnalyze)),
+                              Expanded(child: _buildAnalyzeButton(canAnalyze: canAnalyze)),
                             ],
                           ),
                         ],
                       ),
 
-                    // Mensaje informativo o de advertencia si la URL no es un video compatible
+                    // Mensaje informativo o de advertencia si la URL no es válida
                     if (validation != null && !validation.isValid) ...[
                       const SizedBox(height: 12),
                       Container(
@@ -232,97 +267,124 @@ class UrlInputCard extends StatelessWidget {
 
   Widget _buildTextField(
     BuildContext context,
-    ThemeData theme,
     MediaUrlValidationResult? validation,
   ) {
     final bool hasError = validation != null && !validation.isValid;
 
-    return TextField(
-      controller: controller,
-      enabled: !isLoading,
-      style: theme.textTheme.bodyMedium?.copyWith(
-        fontWeight: FontWeight.w500,
-      ),
-      decoration: InputDecoration(
-        hintText: 'Ej. https://www.youtube.com/watch?v=... o https://tiktok.com/@...',
-        hintStyle: theme.textTheme.bodyMedium?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+    return SizedBox(
+      height: 46,
+      child: TextField(
+        controller: controller,
+        enabled: !isLoading,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 13,
+          fontFamily: 'monospace',
+          fontWeight: FontWeight.w500,
         ),
-        filled: true,
-        fillColor: theme.colorScheme.surfaceContainerLowest,
-        prefixIcon: Icon(
-          validation != null && validation.isValid
-              ? validation.platform.icon
-              : Icons.search_rounded,
-          color: hasError
-              ? theme.colorScheme.error
-              : validation != null && validation.isValid
-                  ? theme.colorScheme.primary
-                  : theme.colorScheme.onSurfaceVariant,
-        ),
-        suffixIcon: controller.text.isNotEmpty
-            ? IconButton(
-                tooltip: 'Limpiar campo',
-                icon: const Icon(Icons.clear_rounded, size: 20),
-                onPressed: isLoading ? null : () => controller.clear(),
-              )
-            : null,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(
-            color: hasError
-                ? theme.colorScheme.error
-                : theme.colorScheme.outlineVariant.withValues(alpha: 0.6),
+        decoration: InputDecoration(
+          hintText: 'Pega un enlace de YouTube, Vimeo, TikTok, etc...',
+          hintStyle: TextStyle(
+            color: const Color(0xFF64748B),
+            fontSize: 13,
+            fontFamily: 'monospace',
           ),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(
-            color: hasError
-                ? theme.colorScheme.error.withValues(alpha: 0.6)
-                : theme.colorScheme.outlineVariant.withValues(alpha: 0.6),
+          filled: true,
+          fillColor: Colors.black.withValues(alpha: 0.45),
+          prefixIcon: const Icon(
+            Icons.play_arrow_outlined,
+            color: Color(0xFFA855F7),
+            size: 18,
           ),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(
-            color: hasError ? theme.colorScheme.error : theme.colorScheme.primary,
-            width: 1.8,
-          ),
-        ),
-      ),
-      onSubmitted: (_) {
-        if (!isLoading && validation != null && validation.isValid) {
-          onAnalyze();
-        }
-      },
-    );
-  }
-
-  Widget _buildPasteButton(BuildContext context, ThemeData theme) {
-    return Tooltip(
-      message: 'Pegar enlace del portapapeles del sistema',
-      child: OutlinedButton.icon(
-        onPressed: isLoading ? null : () => _pasteFromClipboard(context),
-        icon: const Icon(Icons.content_paste_rounded, size: 18),
-        label: const Text('Pegar'),
-        style: OutlinedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          shape: RoundedRectangleBorder(
+          suffixIcon: controller.text.isNotEmpty
+              ? IconButton(
+                  tooltip: 'Limpiar campo',
+                  icon: const Icon(Icons.close_rounded, size: 16, color: Color(0xFF94A3B8)),
+                  onPressed: isLoading ? null : () => controller.clear(),
+                )
+              : null,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(
+              color: hasError
+                  ? const Color(0xFFF87171)
+                  : Colors.white.withValues(alpha: 0.09),
+            ),
           ),
-          side: BorderSide(
-            color: theme.colorScheme.outlineVariant,
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(
+              color: hasError
+                  ? const Color(0xFFF87171)
+                  : Colors.white.withValues(alpha: 0.09),
+            ),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(
+              color: hasError
+                  ? const Color(0xFFF87171)
+                  : const Color(0xFFA855F7).withValues(alpha: 0.6),
+              width: 1.5,
+            ),
+          ),
+        ),
+        onSubmitted: (_) {
+          if (!isLoading && validation != null && validation.isValid) {
+            onAnalyze();
+          }
+        },
+      ),
+    );
+  }
+
+  Widget _buildPasteButton(BuildContext context) {
+    return Tooltip(
+      message: 'Pegar enlace del portapapeles',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: isLoading ? null : () => _pasteFromClipboard(context),
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            height: 46,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.04),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.09),
+                width: 1.0,
+              ),
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.content_paste_rounded,
+                  size: 16,
+                  color: Color(0xFFA855F7),
+                ),
+                SizedBox(width: 8),
+                Text(
+                  'Pegar',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: Color(0xFFE2E8F0),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildAnalyzeButton(
-    BuildContext context,
-    ThemeData theme, {
+  Widget _buildAnalyzeButton({
     required bool canAnalyze,
   }) {
     final String tooltipMessage = canAnalyze
@@ -333,16 +395,33 @@ class UrlInputCard extends StatelessWidget {
       message: tooltipMessage,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
+        height: 46,
         decoration: BoxDecoration(
-          gradient: canAnalyze ? AppTheme.analyzeGradient : null,
+          gradient: canAnalyze
+              ? const LinearGradient(
+                  colors: [
+                    Color(0xFF9333EA),
+                    Color(0xFF6366F1),
+                    Color(0xFF06B6D4),
+                  ],
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                )
+              : null,
           color: canAnalyze
               ? null
-              : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+              : const Color(0xFF262638).withValues(alpha: 0.5),
           borderRadius: BorderRadius.circular(12),
+          border: canAnalyze
+              ? Border.all(
+                  color: Colors.white.withValues(alpha: 0.15),
+                  width: 1.0,
+                )
+              : null,
           boxShadow: canAnalyze
               ? [
                   BoxShadow(
-                    color: const Color(0xFF9333EA).withValues(alpha: 0.38),
+                    color: const Color(0xFF06B6D4).withValues(alpha: 0.28),
                     blurRadius: 14,
                     offset: const Offset(0, 3),
                   ),
@@ -355,35 +434,35 @@ class UrlInputCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
             onTap: canAnalyze ? onAnalyze : null,
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+              padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   if (isLoading)
                     const SizedBox(
-                      width: 18,
-                      height: 18,
+                      width: 16,
+                      height: 16,
                       child: CircularProgressIndicator(
-                        strokeWidth: 2.2,
+                        strokeWidth: 2,
                         color: Colors.white,
                       ),
                     )
                   else
-                    Icon(
+                    const Icon(
                       Icons.auto_awesome_rounded,
-                      size: 18,
-                      color: canAnalyze
-                          ? Colors.white
-                          : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+                      size: 16,
+                      color: Color(0xFFE0F2FE),
                     ),
                   const SizedBox(width: 8),
                   Text(
                     isLoading ? 'Analizando...' : 'Analizar',
-                    style: theme.textTheme.labelLarge?.copyWith(
+                    style: TextStyle(
+                      fontSize: 13.5,
                       fontWeight: FontWeight.w700,
                       color: canAnalyze
                           ? Colors.white
-                          : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+                          : const Color(0xFF64748B),
                       letterSpacing: 0.2,
                     ),
                   ),

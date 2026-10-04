@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="es">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>Media Downloader - Desktop Suite</title>
+    <!-- Tailwind CSS v3 with Plugins -->
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <!-- Tailwind Configuration -->
+    <script data-purpose="tailwind-config">
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            obsidian: '#09090E',
+                            card: 'rgba(18, 18, 26, 0.72)',
+                            border: 'rgba(255, 255, 255, 0.08)',
+                            glowPurple: '#8B5CF6',
+                            glowCyan: '#06B6D4',
+                            glowBlue: '#3B82F6',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'Courier New', 'monospace'],
+                    },
+                    boxShadow: {
+                        'glow-purple': '0 0 25px -4px rgba(139, 92, 246, 0.45)',
+                        'glow-button': '0 4px 20px 0px rgba(99, 102, 241, 0.4)',
+                        'card-glass': '0 8px 32px 0 rgba(0, 0, 0, 0.37)',
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Typography & Icons Font preconnect -->
+    <link href="https://fonts.googleapis.com" rel="preconnect" />
+    <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap"
+        rel="stylesheet" />
+    <!-- Core Layout & Custom Micro-Animations -->
+    <style data-purpose="custom-animations">
+        @keyframes border-beam {
+            0% {
+                offset-distance: 0%;
+            }
+
+            100% {
+                offset-distance: 100%;
+            }
+        }
+
+        @keyframes pulse-slow {
+
+            0%,
+            100% {
+                opacity: 0.35;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: 0.6;
+                transform: scale(1.08);
+            }
+        }
+
+        .aurora-glow-1 {
+            animation: pulse-slow 9s ease-in-out infinite alternate;
+        }
+
+        .aurora-glow-2 {
+            animation: pulse-slow 12s ease-in-out infinite alternate-reverse;
+        }
+
+        /* Animated gradient border glow */
+        .border-gradient-active {
+            position: relative;
+        }
+
+        .border-gradient-active::before {
+            content: '';
+            position: absolute;
+            inset: -1px;
+            border-radius: inherit;
+            padding: 1px;
+            background: linear-gradient(135deg, #A855F7 0%, #3B82F6 50%, #06B6D4 100%);
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+            pointer-events: none;
+        }
+
+        /* Subtle custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.12);
+            border-radius: 9999px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.25);
+        }
+    </style>
+</head>
+
+<body
+    class="bg-[#08080C] text-slate-200 font-sans antialiased min-h-screen flex flex-col justify-between selection:bg-purple-500/30 selection:text-purple-200 overflow-x-hidden relative">
+    <!-- BEGIN: AmbientAuroraBackground -->
+    <!-- Bioluminescent ambient canvas lighting with deep blur -->
+    <div aria-hidden="true" class="fixed inset-0 pointer-events-none overflow-hidden z-0">
+        <div
+            class="absolute -top-[15%] -left-[10%] w-[55vw] h-[55vw] rounded-full bg-gradient-to-br from-purple-800/25 to-indigo-900/10 blur-[130px] aurora-glow-1">
+        </div>
+        <div
+            class="absolute top-[30%] -right-[15%] w-[50vw] h-[50vw] rounded-full bg-gradient-to-bl from-cyan-600/15 via-blue-900/15 to-transparent blur-[140px] aurora-glow-2">
+        </div>
+        <div
+            class="absolute -bottom-[20%] left-[20%] w-[45vw] h-[45vw] rounded-full bg-gradient-to-tr from-fuchsia-900/15 to-purple-800/10 blur-[120px]">
+        </div>
+        <div
+            class="absolute inset-0 bg-[radial-gradient(#ffffff05_1px,transparent_1px)] [background-size:24px_24px] opacity-40">
+        </div>
+    </div>
+    <!-- END: AmbientAuroraBackground -->
+    <!-- BEGIN: MainDesktopAppContainer -->
+    <div
+        class="relative z-10 flex flex-col h-screen max-w-[1440px] mx-auto w-full px-4 sm:px-6 lg:px-8 py-3 select-none justify-between">
+        <!-- BEGIN: DesktopTitleBar -->
+        <header class="flex items-center justify-between py-2 border-b border-white/[0.06] mb-5">
+            <!-- App Brand Title and Logo -->
+            <div class="flex items-center space-x-3">
+                <div
+                    class="h-9 w-9 rounded-xl bg-gradient-to-tr from-purple-600 via-indigo-600 to-purple-400 p-[1px] shadow-lg shadow-purple-900/40">
+                    <div
+                        class="h-full w-full bg-[#12111d] rounded-xl flex items-center justify-center backdrop-blur-sm">
+                        <!-- Cloud Download Icon -->
+                        <svg class="w-5 h-5 text-purple-300" fill="none" stroke="currentColor" stroke-linecap="round"
+                            stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24">
+                            <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"></path>
+                            <path d="M12 12v9"></path>
+                            <path d="m8 17 4 4 4-4"></path>
+                        </svg>
+                    </div>
+                </div>
+                <div class="flex items-baseline space-x-2">
+                    <h1 class="text-base font-semibold tracking-wide text-white font-sans">Media Downloader</h1>
+                    <span
+                        class="text-[11px] px-2 py-0.5 rounded-full bg-purple-950/60 border border-purple-500/20 text-purple-300 font-medium">Pro
+                        Suite</span>
+                </div>
+            </div>
+            <!-- Engine Status & Window Controls -->
+            <div class="flex items-center space-x-4">
+                <!-- Backend Status Badges -->
+                <div
+                    class="hidden sm:flex items-center space-x-2.5 text-[11px] text-slate-400 font-mono bg-white/[0.03] border border-white/[0.06] px-3 py-1.5 rounded-lg">
+                    <span class="flex items-center space-x-1.5">
+                        <span class="relative flex h-2 w-2">
+                            <span
+                                class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                        </span>
+                    </span>
+                    <span class="text-white/20">|</span>
+                </div>
+                <!-- Terminal Logs Toggle Button -->
+                <button
+                    class="flex items-center space-x-1.5 px-2.5 py-1.5 text-xs text-slate-300 bg-white/[0.04] hover:bg-white/[0.08] hover:text-white border border-white/[0.08] rounded-lg transition-all duration-200 active:scale-95"
+                    title="Abrir terminal de depuración" type="button">
+                    <svg class="w-3.5 h-3.5 text-purple-400" fill="none" stroke="currentColor" stroke-linecap="round"
+                        stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24">
+                        <polyline points="4 17 10 11 4 5"></polyline>
+                        <line x1="12" x2="20" y1="19" y2="19"></line>
+                    </svg>
+                    <span class="hidden md:inline font-mono">Console</span>
+                </button>
+                <!-- OS Window Frame Controls -->
+                <div class="flex items-center space-x-2 pl-2 border-l border-white/[0.08]">
+                    <button aria-label="Minimizar ventana"
+                        class="w-3 h-3 rounded-full bg-[#34353E] hover:bg-amber-500/80 transition-colors duration-150 flex items-center justify-center group">
+                        <span
+                            class="opacity-0 group-hover:opacity-100 text-[8px] leading-none text-black font-bold mb-1">-</span>
+                    </button>
+                    <button aria-label="Maximizar ventana"
+                        class="w-3 h-3 rounded-full bg-[#34353E] hover:bg-emerald-500/80 transition-colors duration-150 flex items-center justify-center group">
+                        <span
+                            class="opacity-0 group-hover:opacity-100 text-[7px] leading-none text-black font-bold">+</span>
+                    </button>
+                    <button aria-label="Cerrar aplicación"
+                        class="w-3 h-3 rounded-full bg-[#34353E] hover:bg-rose-500 transition-colors duration-150 flex items-center justify-center group">
+                        <span
+                            class="opacity-0 group-hover:opacity-100 text-[8px] leading-none text-black font-bold">×</span>
+                    </button>
+                </div>
+            </div>
+        </header>
+        <!-- END: DesktopTitleBar -->
+        <!-- BEGIN: MainWorkspace -->
+        <main class="flex-1 flex flex-col space-y-4 justify-start">
+            <!-- BEGIN: DestinationDirectoryBar -->
+            <section class="w-full" data-purpose="folder-destination-bar">
+                <div
+                    class="flex items-center justify-between px-4 py-2.5 rounded-xl bg-white/[0.03] backdrop-blur-md border border-white/[0.08] hover:border-white/[0.14] transition-colors shadow-card-glass">
+                    <div class="flex items-center space-x-2.5 overflow-hidden text-sm">
+                        <!-- Folder Icon -->
+                        <svg class="w-4 h-4 text-purple-400 shrink-0" fill="none" stroke="currentColor"
+                            stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24">
+                            <path
+                                d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z">
+                            </path>
+                        </svg>
+                        <span class="text-slate-400 font-medium whitespace-nowrap">Carpeta de destino:</span>
+                        <code
+                            class="text-purple-200/90 font-mono text-xs truncate max-w-sm sm:max-w-md md:max-w-xl">/home/yisus/Descargas</code>
+                    </div>
+                    <button
+                        class="flex items-center space-x-1.5 px-3 py-1 rounded-lg text-xs font-medium text-slate-300 hover:text-white bg-white/[0.05] hover:bg-purple-600/20 border border-white/[0.08] hover:border-purple-500/40 transition-all duration-200 active:scale-95 shrink-0"
+                        type="button">
+                        <svg class="w-3.5 h-3.5 text-purple-300" fill="none" stroke="currentColor"
+                            stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24">
+                            <path
+                                d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 8 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z">
+                            </path>
+                            <line x1="12" x2="12" y1="10" y2="16"></line>
+                            <line x1="9" x2="15" y1="13" y2="13"></line>
+                        </svg>
+                        <span>Cambiar</span>
+                    </button>
+                </div>
+            </section>
+            <!-- END: DestinationDirectoryBar -->
+            <!-- BEGIN: UrlInputBentoCard -->
+            <section
+                class="p-4 sm:p-5 rounded-2xl bg-gradient-to-b from-[#14141E]/90 to-[#0F0F17]/90 backdrop-blur-xl border border-white/[0.08] shadow-card-glass"
+                data-purpose="url-input-card">
+                <!-- URL Card Header -->
+                <div class="flex items-center justify-between mb-3.5">
+                    <div class="flex items-center space-x-2.5">
+                        <span
+                            class="flex items-center justify-center w-7 h-7 rounded-lg bg-purple-600/20 border border-purple-500/30 text-purple-400">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-linecap="round"
+                                stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24">
+                                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                            </svg>
+                        </span>
+                        <label class="text-sm font-semibold tracking-wide text-slate-100" for="video-url-input">
+                            Dirección URL del video
+                        </label>
+                    </div>
+                    <!-- Detected Platform Indicator Badge -->
+                    <div
+                        class="flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-purple-900/30 border border-purple-500/30 text-purple-300 text-xs font-medium">
+                        <svg class="w-3.5 h-3.5 text-purple-400 fill-current" viewbox="0 0 24 24">
+                            <path
+                                d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z">
+                            </path>
+                        </svg>
+                        <span>YouTube</span>
+                    </div>
+                </div>
+                <!-- Input Field & Command Action Buttons -->
+                <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+                    <!-- Text Input Container -->
+                    <div class="relative flex-1 group">
+                        <div
+                            class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-purple-400 group-focus-within:text-purple-300">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-linecap="round"
+                                stroke-linejoin="round" stroke-width="2.5" viewbox="0 0 24 24">
+                                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                            </svg>
+                        </div>
+                        <input
+                            class="w-full pl-10 pr-10 py-3 rounded-xl bg-black/40 border border-white/[0.09] text-white text-sm font-mono placeholder-slate-500 focus:outline-none focus:border-purple-500/60 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
+                            id="video-url-input" placeholder="Pega un enlace de YouTube, Vimeo, TikTok, etc..."
+                            type="text" value="https://youtu.be/EochZ-iyrqQ" />
+                        <!-- Clear Input Action Button -->
+                        <button
+                            class="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-white transition-colors"
+                            id="btn-clear-url" title="Borrar dirección" type="button">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-linecap="round"
+                                stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24">
+                                <line x1="18" x2="6" y1="6" y2="18"></line>
+                                <line x1="6" x2="18" y1="6" y2="18"></line>
+                            </svg>
+                        </button>
+                    </div>
+                    <!-- Paste from Clipboard Button -->
+                    <button
+                        class="px-4 py-3 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] text-slate-200 hover:text-white font-medium text-xs sm:text-sm border border-white/[0.09] transition-all duration-200 flex items-center justify-center space-x-2 shrink-0 active:scale-95"
+                        id="btn-paste-url" type="button">
+                        <svg class="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" stroke-linecap="round"
+                            stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24">
+                            <rect height="4" rx="1" ry="1" width="8" x="8" y="2"></rect>
+                            <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
+                        </svg>
+                        <span>Pegar</span>
+                    </button>
+                    <!-- Primary Analyze Button -->
+                    <button
+                        class="px-6 py-3 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-cyan-500 hover:from-purple-500 hover:to-cyan-400 text-white font-semibold text-xs sm:text-sm shadow-glow-purple hover:shadow-cyan-500/25 transition-all duration-300 flex items-center justify-center space-x-2 shrink-0 active:scale-95"
+                        id="btn-analyze" type="button">
+                        <!-- Sparkles Icon -->
+                        <svg class="w-4 h-4 text-cyan-200 animate-pulse" fill="none" stroke="currentColor"
+                            stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24">
+                            <path
+                                d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z">
+                            </path>
+                        </svg>
+                        <span>Analizar</span>
+                    </button>
+                </div>
+            </section>
+            <!-- END: UrlInputBentoCard -->
+            <!-- BEGIN: InspectionAndConfigurationGrid -->
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 flex-1 items-start">
+                <!-- BEGIN: VideoInformationPreviewCard (Left Column) -->
+                <section
+                    class="lg:col-span-5 p-4 sm:p-5 rounded-2xl bg-gradient-to-b from-[#14141E]/90 to-[#0F0F17]/90 backdrop-blur-xl border border-white/[0.08] shadow-card-glass flex flex-col justify-between h-full"
+                    data-purpose="video-preview-card">
+                    <div>
+                        <!-- Video Thumbnail with Aspect Ratio and Duration Badge -->
+                        <div
+                            class="relative w-full aspect-video rounded-xl overflow-hidden mb-4 border border-white/[0.08] group bg-black/60 shadow-lg">
+                            <img alt="Vista previa del video: Ryan Castro, Kapo, Gangsta - LA VILLA"
+                                class="w-full h-full object-cover object-center group-hover:scale-102 transition-transform duration-500"
+                                src="https://lh3.googleusercontent.com/aida-public/AB6AXuD0wjxE0hjp-_Y4sXoVFChkSXdNsg8CENTePd6oOG_na3ieDIlpu8sPjGjl7j2qaIu99hI6A8oruUxUxO2nWGr1lONGQsnEehKawVXnruyLY5aLDEFtOrRoU-IfW_QZVRYhJIW8B9vLapQV5DdG5jpA-2E72imtS_KPFhLQi9cy6JwSqWeL3hVtyz6Q6amgkfR3GyxABsqu96N485Od7lV3mRJORjaWc_2Lmyhlo25oYVcITI2hjKExyuFVid2RVLLbRA" />
+                            <div
+                                class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/20 pointer-events-none">
+                            </div>
+                            <!-- Video Duration Chip -->
+                            <div
+                                class="absolute bottom-2.5 right-2.5 flex items-center space-x-1 px-2 py-0.5 rounded-md bg-black/80 backdrop-blur-md text-[11px] font-mono text-slate-200 border border-white/10 shadow-sm">
+                                <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor"
+                                    stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24">
+                                    <circle cx="12" cy="12" r="10"></circle>
+                                    <polyline points="12 6 12 12 16 14"></polyline>
+                                </svg>
+                                <span>03:22</span>
+                            </div>
+                        </div>
+                        <!-- Video Metadata Title -->
+                        <h2
+                            class="text-base sm:text-lg font-bold text-white leading-snug line-clamp-2 tracking-normal mb-2.5 hover:text-purple-200 transition-colors cursor-default">
+                            Ryan Castro, Kapo, Gangsta - LA VILLA (Video Oficial) | HOPI SENDÉ
+                        </h2>
+                        <!-- Channel / Author Profile -->
+                        <div class="flex items-center space-x-2.5 mb-4">
+                            <div
+                                class="w-6 h-6 rounded-full bg-purple-900/60 border border-purple-500/40 flex items-center justify-center text-purple-300">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-linecap="round"
+                                    stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24">
+                                    <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path>
+                                    <circle cx="12" cy="7" r="4"></circle>
+                                </svg>
+                            </div>
+                            <span class="text-xs sm:text-sm text-slate-300 font-medium">Ryan Castro</span>
+                            <!-- Verified Badge -->
+                            <svg class="w-3.5 h-3.5 text-purple-400" fill="currentColor" viewbox="0 0 24 24">
+                                <path clip-rule="evenodd"
+                                    d="M8.603 3.799A4.49 4.49 0 0 1 12 2.25c1.357 0 2.573.6 3.397 1.549a4.49 4.49 0 0 1 3.498 1.307 4.491 4.491 0 0 1 1.307 3.497A4.49 4.49 0 0 1 21.75 12a4.49 4.49 0 0 1-1.549 3.397 4.491 4.491 0 0 1-1.307 3.497 4.491 4.491 0 0 1-3.497 1.307A4.49 4.49 0 0 1 12 21.75a4.49 4.49 0 0 1-3.397-1.549 4.49 4.49 0 0 1-3.498-1.306 4.491 4.491 0 0 1-1.307-3.498A4.49 4.49 0 0 1 2.25 12c0-1.357.6-2.573 1.549-3.397a4.49 4.49 0 0 1 1.307-3.497 4.49 4.49 0 0 1 3.497-1.307Zm7.007 6.387a.75.75 0 1 0-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 0 0-1.06 1.06l2.25 2.25a.75.75 0 0 0 1.14-.094l3.75-5.25Z"
+                                    fill-rule="evenodd"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    <!-- Feature Detection Tags / Pills -->
+                    <div class="flex flex-wrap items-center gap-2 pt-2 border-t border-white/[0.06]">
+                        <!-- Available Video Qualities Tag -->
+                        <div
+                            class="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-cyan-950/30 border border-cyan-500/20 text-cyan-300 text-xs font-medium">
+                            <svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor"
+                                stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24">
+                                <rect height="15" rx="2" width="20" x="2" y="3"></rect>
+                                <polyline points="8 21 12 17 16 21"></polyline>
+                            </svg>
+                            <span>8 calidades de video</span>
+                        </div>
+                        <!-- Available Audio Tracks Tag -->
+                        <div
+                            class="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-pink-950/30 border border-pink-500/20 text-pink-300 text-xs font-medium">
+                            <svg class="w-3.5 h-3.5 text-pink-400" fill="none" stroke="currentColor"
+                                stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24">
+                                <path d="M9 18V5l12-2v13"></path>
+                                <circle cx="6" cy="18" r="3"></circle>
+                                <circle cx="18" cy="16" r="3"></circle>
+                            </svg>
+                            <span>4 pistas de audio</span>
+                        </div>
+                    </div>
+                </section>
+                <!-- END: VideoInformationPreviewCard -->
+                <!-- BEGIN: DownloadConfigurationCard (Right Column) -->
+                <section
+                    class="lg:col-span-7 p-4 sm:p-5 rounded-2xl bg-gradient-to-b from-[#14141E]/90 to-[#0F0F17]/90 backdrop-blur-xl border border-white/[0.08] shadow-card-glass flex flex-col justify-between h-full space-y-4"
+                    data-purpose="download-config-card">
+                    <div>
+                        <!-- Section Header & Download Format Segmented Toggle -->
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
+                            <div>
+                                <h3 class="text-base font-bold text-white tracking-wide">Modalidad de Descarga</h3>
+                                <p class="text-xs text-slate-400">Selecciona el formato y la calidad deseada</p>
+                            </div>
+                            <!-- Segmented Control Button (Video / Audio) -->
+                            <div
+                                class="flex items-center p-1 rounded-xl bg-black/50 border border-white/[0.08] self-start sm:self-auto">
+                                <!-- Video Tab Button (Active) -->
+                                <button
+                                    class="flex items-center space-x-2 px-3.5 py-1.5 rounded-lg text-xs font-medium text-white bg-gradient-to-r from-purple-600 to-indigo-600 shadow-md shadow-purple-900/30 transition-all duration-200"
+                                    id="tab-format-video" type="button">
+                                    <svg class="w-3.5 h-3.5 text-purple-200" fill="none" stroke="currentColor"
+                                        stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        viewbox="0 0 24 24">
+                                        <polygon points="23 7 16 12 23 17 23 7"></polygon>
+                                        <rect height="14" rx="2" ry="2" width="14" x="1" y="5"></rect>
+                                    </svg>
+                                    <span>Video (MP4)</span>
+                                </button>
+                                <!-- Audio Only Tab Button (Inactive) -->
+                                <button
+                                    class="flex items-center space-x-2 px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white transition-colors duration-200"
+                                    id="tab-format-audio" type="button">
+                                    <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor"
+                                        stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        viewbox="0 0 24 24">
+                                        <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
+                                        <path
+                                            d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z">
+                                        </path>
+                                    </svg>
+                                    <span>Solo Audio</span>
+                                </button>
+                            </div>
+                        </div>
+                        <!-- Resolution Selection Header -->
+                        <div
+                            class="flex items-center space-x-2 mb-3 text-xs font-semibold text-slate-200 uppercase tracking-wider">
+                            <svg class="w-3.5 h-3.5 text-purple-400" fill="none" stroke="currentColor"
+                                stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24">
+                                <line x1="4" x2="4" y1="21" y2="14"></line>
+                                <line x1="4" x2="4" y1="10" y2="3"></line>
+                                <line x1="12" x2="12" y1="21" y2="12"></line>
+                                <line x1="12" x2="12" y1="8" y2="3"></line>
+                                <line x1="20" x2="20" y1="21" y2="16"></line>
+                                <line x1="20" x2="20" y1="12" y2="3"></line>
+                                <line x1="1" x2="7" y1="14" y2="14"></line>
+                                <line x1="9" x2="15" y1="8" y2="8"></line>
+                                <line x1="17" x2="23" y1="16" y2="16"></line>
+                            </svg>
+                            <span>Resoluciones disponibles:</span>
+                        </div>
+                        <!-- Resolution Grid (8 Options: 4K, 2K, FHD 1080p, HD 720p, SD 480p, SD 360p, SD 240p, SD 144p) -->
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5" id="quality-selector-group">
+                            <!-- Option: 4K 2160p -->
+                            <button
+                                class="quality-card group flex items-center justify-between p-2.5 rounded-xl bg-black/30 hover:bg-white/[0.05] border border-white/[0.08] hover:border-white/[0.2] transition-all duration-200 text-left"
+                                type="button">
+                                <div class="flex items-center space-x-2.5">
+                                    <span
+                                        class="px-2 py-0.5 rounded text-[10px] font-bold bg-white/[0.06] text-slate-400 group-hover:text-purple-300 border border-white/[0.04] transition-colors">4K</span>
+                                    <span
+                                        class="text-xs font-semibold text-slate-300 group-hover:text-white">2160p</span>
+                                </div>
+                                <div
+                                    class="w-4 h-4 rounded-full border border-white/20 flex items-center justify-center opacity-0 group-hover:opacity-60 transition-opacity">
+                                    <div class="w-1.5 h-1.5 rounded-full bg-purple-400"></div>
+                                </div>
+                            </button>
+                            <!-- Option: 2K 1440p -->
+                            <button
+                                class="quality-card group flex items-center justify-between p-2.5 rounded-xl bg-black/30 hover:bg-white/[0.05] border border-white/[0.08] hover:border-white/[0.2] transition-all duration-200 text-left"
+                                type="button">
+                                <div class="flex items-center space-x-2.5">
+                                    <span
+                                        class="px-2 py-0.5 rounded text-[10px] font-bold bg-white/[0.06] text-slate-400 group-hover:text-purple-300 border border-white/[0.04] transition-colors">2K</span>
+                                    <span
+                                        class="text-xs font-semibold text-slate-300 group-hover:text-white">1440p</span>
+                                </div>
+                                <div
+                                    class="w-4 h-4 rounded-full border border-white/20 flex items-center justify-center opacity-0 group-hover:opacity-60 transition-opacity">
+                                    <div class="w-1.5 h-1.5 rounded-full bg-purple-400"></div>
+                                </div>
+                            </button>
+                            <!-- Option: FHD 1080p (ACTIVE SELECTED with Glowing Border Beam) -->
+                            <button
+                                class="quality-card border-gradient-active flex items-center justify-between p-2.5 rounded-xl bg-purple-900/25 border border-purple-500/60 shadow-[0_0_15px_-3px_rgba(139,92,246,0.3)] transition-all duration-200 text-left ring-1 ring-purple-500/40"
+                                type="button">
+                                <div class="flex items-center space-x-2.5">
+                                    <span
+                                        class="px-2 py-0.5 rounded text-[10px] font-extrabold bg-gradient-to-r from-purple-500 to-indigo-500 text-white shadow-sm">FHD</span>
+                                    <span class="text-xs font-bold text-white">1080p</span>
+                                </div>
+                                <!-- Check Icon Badge -->
+                                <div
+                                    class="w-5 h-5 rounded-full bg-purple-500/20 border border-purple-400/60 flex items-center justify-center text-purple-300">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-linecap="round"
+                                        stroke-linejoin="round" stroke-width="2.5" viewbox="0 0 24 24">
+                                        <polyline points="20 6 9 17 4 12"></polyline>
+                                    </svg>
+                                </div>
+                            </button>
+                            <!-- Option: HD 720p -->
+                            <button
+                                class="quality-card group flex items-center justify-between p-2.5 rounded-xl bg-black/30 hover:bg-white/[0.05] border border-white/[0.08] hover:border-white/[0.2] transition-all duration-200 text-left"
+                                type="button">
+                                <div class="flex items-center space-x-2.5">
+                                    <span
+                                        class="px-2 py-0.5 rounded text-[10px] font-bold bg-white/[0.06] text-slate-400 group-hover:text-purple-300 border border-white/[0.04] transition-colors">HD</span>
+                                    <span
+                                        class="text-xs font-semibold text-slate-300 group-hover:text-white">720p</span>
+                                </div>
+                                <div
+                                    class="w-4 h-4 rounded-full border border-white/20 flex items-center justify-center opacity-0 group-hover:opacity-60 transition-opacity">
+                                    <div class="w-1.5 h-1.5 rounded-full bg-purple-400"></div>
+                                </div>
+                            </button>
+                            <!-- Option: SD 480p -->
+                            <button
+                                class="quality-card group flex items-center justify-between p-2.5 rounded-xl bg-black/30 hover:bg-white/[0.05] border border-white/[0.08] hover:border-white/[0.2] transition-all duration-200 text-left"
+                                type="button">
+                                <div class="flex items-center space-x-2.5">
+                                    <span
+                                        class="px-2 py-0.5 rounded text-[10px] font-bold bg-white/[0.06] text-slate-400 group-hover:text-purple-300 border border-white/[0.04] transition-colors">SD</span>
+                                    <span
+                                        class="text-xs font-semibold text-slate-300 group-hover:text-white">480p</span>
+                                </div>
+                                <div
+                                    class="w-4 h-4 rounded-full border border-white/20 flex items-center justify-center opacity-0 group-hover:opacity-60 transition-opacity">
+                                    <div class="w-1.5 h-1.5 rounded-full bg-purple-400"></div>
+                                </div>
+                            </button>
+                            <!-- Option: SD 360p -->
+                            <button
+                                class="quality-card group flex items-center justify-between p-2.5 rounded-xl bg-black/30 hover:bg-white/[0.05] border border-white/[0.08] hover:border-white/[0.2] transition-all duration-200 text-left"
+                                type="button">
+                                <div class="flex items-center space-x-2.5">
+                                    <span
+                                        class="px-2 py-0.5 rounded text-[10px] font-bold bg-white/[0.06] text-slate-400 group-hover:text-purple-300 border border-white/[0.04] transition-colors">SD</span>
+                                    <span
+                                        class="text-xs font-semibold text-slate-300 group-hover:text-white">360p</span>
+                                </div>
+                                <div
+                                    class="w-4 h-4 rounded-full border border-white/20 flex items-center justify-center opacity-0 group-hover:opacity-60 transition-opacity">
+                                    <div class="w-1.5 h-1.5 rounded-full bg-purple-400"></div>
+                                </div>
+                            </button>
+                            <!-- Option: SD 240p -->
+                            <button
+                                class="quality-card group flex items-center justify-between p-2.5 rounded-xl bg-black/30 hover:bg-white/[0.05] border border-white/[0.08] hover:border-white/[0.2] transition-all duration-200 text-left"
+                                type="button">
+                                <div class="flex items-center space-x-2.5">
+                                    <span
+                                        class="px-2 py-0.5 rounded text-[10px] font-bold bg-white/[0.06] text-slate-400 group-hover:text-purple-300 border border-white/[0.04] transition-colors">SD</span>
+                                    <span
+                                        class="text-xs font-semibold text-slate-300 group-hover:text-white">240p</span>
+                                </div>
+                                <div
+                                    class="w-4 h-4 rounded-full border border-white/20 flex items-center justify-center opacity-0 group-hover:opacity-60 transition-opacity">
+                                    <div class="w-1.5 h-1.5 rounded-full bg-purple-400"></div>
+                                </div>
+                            </button>
+                            <!-- Option: SD 144p -->
+                            <button
+                                class="quality-card group flex items-center justify-between p-2.5 rounded-xl bg-black/30 hover:bg-white/[0.05] border border-white/[0.08] hover:border-white/[0.2] transition-all duration-200 text-left"
+                                type="button">
+                                <div class="flex items-center space-x-2.5">
+                                    <span
+                                        class="px-2 py-0.5 rounded text-[10px] font-bold bg-white/[0.06] text-slate-400 group-hover:text-purple-300 border border-white/[0.04] transition-colors">SD</span>
+                                    <span
+                                        class="text-xs font-semibold text-slate-300 group-hover:text-white">144p</span>
+                                </div>
+                                <div
+                                    class="w-4 h-4 rounded-full border border-white/20 flex items-center justify-center opacity-0 group-hover:opacity-60 transition-opacity">
+                                    <div class="w-1.5 h-1.5 rounded-full bg-purple-400"></div>
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+                    <!-- Primary Full-Width Download Action Trigger -->
+                    <div class="pt-3">
+                        <button
+                            class="w-full py-3.5 px-6 rounded-xl bg-gradient-to-r from-indigo-500 via-blue-600 to-indigo-600 hover:from-indigo-400 hover:to-blue-500 text-white font-semibold text-sm shadow-glow-button hover:shadow-indigo-500/40 transition-all duration-300 flex items-center justify-center space-x-2.5 active:scale-[0.99] border border-blue-400/30"
+                            id="btn-download-action" type="button">
+                            <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" stroke-linecap="round"
+                                stroke-linejoin="round" stroke-width="2.5" viewbox="0 0 24 24">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                <polyline points="7 10 12 15 17 10"></polyline>
+                                <line x1="12" x2="12" y1="15" y2="3"></line>
+                            </svg>
+                            <span id="btn-download-text">Descargar Video</span>
+                        </button>
+                    </div>
+                </section>
+                <!-- END: DownloadConfigurationCard -->
+            </div>
+            <!-- END: InspectionAndConfigurationGrid -->
+        </main>
+        <!-- END: MainWorkspace -->
+        <!-- BEGIN: MinimalFooter -->
+        <!-- END: MinimalFooter -->
+    </div>
+    <!-- END: MainDesktopAppContainer -->
+    <!-- BEGIN: InteractiveScripts -->
+    <script data-purpose="interface-interactions">
+        document.addEventListener('DOMContentLoaded', () => {
+            // Elements
+            const urlInput = document.getElementById('video-url-input');
+            const clearBtn = document.getElementById('btn-clear-url');
+            const pasteBtn = document.getElementById('btn-paste-url');
+            const analyzeBtn = document.getElementById('btn-analyze');
+            const tabVideo = document.getElementById('tab-format-video');
+            const tabAudio = document.getElementById('tab-format-audio');
+            const downloadBtn = document.getElementById('btn-download-action');
+            const downloadText = document.getElementById('btn-download-text');
+            const qualityCards = document.querySelectorAll('.quality-card');
+
+            // Clear URL Input Button
+            if (clearBtn && urlInput) {
+                clearBtn.addEventListener('click', () => {
+                    urlInput.value = '';
+                    urlInput.focus();
+                });
+            }
+
+            // Paste from Clipboard Button
+            if (pasteBtn && urlInput) {
+                pasteBtn.addEventListener('click', async () => {
+                    try {
+                        const clipboardText = await navigator.clipboard.readText();
+                        if (clipboardText) {
+                            urlInput.value = clipboardText;
+                        }
+                    } catch (err) {
+                        console.info('Clipboard access restricted or unavailable');
+                    }
+                });
+            }
+
+            // Analyze Button Mock Action
+            if (analyzeBtn) {
+                analyzeBtn.addEventListener('click', () => {
+                    analyzeBtn.classList.add('opacity-75', 'cursor-wait');
+                    const originalText = analyzeBtn.innerHTML;
+                    analyzeBtn.innerHTML = `
+            <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span>Analizando...</span>
+          `;
+                    setTimeout(() => {
+                        analyzeBtn.innerHTML = originalText;
+                        analyzeBtn.classList.remove('opacity-75', 'cursor-wait');
+                    }, 800);
+                });
+            }
+
+            // Format Mode Switchers (Video vs Audio)
+            if (tabVideo && tabAudio && downloadText) {
+                tabVideo.addEventListener('click', () => {
+                    tabVideo.className = "flex items-center space-x-2 px-3.5 py-1.5 rounded-lg text-xs font-medium text-white bg-gradient-to-r from-purple-600 to-indigo-600 shadow-md shadow-purple-900/30 transition-all duration-200";
+                    tabAudio.className = "flex items-center space-x-2 px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white transition-colors duration-200";
+                    downloadText.textContent = "Descargar Video";
+                });
+
+                tabAudio.addEventListener('click', () => {
+                    tabAudio.className = "flex items-center space-x-2 px-3.5 py-1.5 rounded-lg text-xs font-medium text-white bg-gradient-to-r from-pink-600 to-purple-600 shadow-md shadow-pink-900/30 transition-all duration-200";
+                    tabVideo.className = "flex items-center space-x-2 px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white transition-colors duration-200";
+                    downloadText.textContent = "Extraer y Descargar Audio (MP3 320kbps)";
+                });
+            }
+
+            // Quality Selection Toggle
+            qualityCards.forEach(card => {
+                card.addEventListener('click', function () {
+                    qualityCards.forEach(c => {
+                        c.className = "quality-card group flex items-center justify-between p-2.5 rounded-xl bg-black/30 hover:bg-white/[0.05] border border-white/[0.08] hover:border-white/[0.2] transition-all duration-200 text-left";
+                        const rightIcon = c.querySelector('div:last-child');
+                        if (rightIcon) {
+                            rightIcon.innerHTML = `<div class="w-1.5 h-1.5 rounded-full bg-purple-400"></div>`;
+                            rightIcon.className = "w-4 h-4 rounded-full border border-white/20 flex items-center justify-center opacity-0 group-hover:opacity-60 transition-opacity";
+                        }
+                    });
+
+                    this.className = "quality-card border-gradient-active flex items-center justify-between p-2.5 rounded-xl bg-purple-900/25 border border-purple-500/60 shadow-[0_0_15px_-3px_rgba(139,92,246,0.3)] transition-all duration-200 text-left ring-1 ring-purple-500/40";
+                    const currentRightIcon = this.querySelector('div:last-child');
+                    if (currentRightIcon) {
+                        currentRightIcon.className = "w-5 h-5 rounded-full bg-purple-500/20 border border-purple-400/60 flex items-center justify-center text-purple-300";
+                        currentRightIcon.innerHTML = `
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+            `;
+                    }
+                });
+            });
+
+            // Download Trigger Animation
+            if (downloadBtn) {
+                downloadBtn.addEventListener('click', () => {
+                    const originalContent = downloadBtn.innerHTML;
+                    downloadBtn.innerHTML = `
+            <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span>Iniciando Descarga en paralelo...</span>
+          `;
+                    downloadBtn.classList.add('pointer-events-none', 'brightness-110');
+
+                    setTimeout(() => {
+                        downloadBtn.innerHTML = `
+              <svg class="w-4 h-4 text-emerald-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+              <span>¡Descarga Añadida a la Cola!</span>
+            `;
+                        setTimeout(() => {
+                            downloadBtn.innerHTML = originalContent;
+                            downloadBtn.classList.remove('pointer-events-none', 'brightness-110');
+                        }, 2000);
+                    }, 1200);
+                });
+            }
+        });
+    </script>
+    <!-- END: InteractiveScripts -->
+</body>
+
+</html>

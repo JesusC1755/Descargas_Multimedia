@@ -53,6 +53,7 @@ class AppTheme {
     return FlexThemeData.dark(
       colors: _cyberpunkDark,
       useMaterial3: true,
+      scaffoldBackground: const Color(0xFF0B0B10),
       surfaceMode: FlexSurfaceMode.levelSurfacesLowScaffold,
       blendLevel: 8,
       subThemesData: const FlexSubThemesData(

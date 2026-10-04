@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_theme.dart';
-import '../../core/utils/formatters.dart';
 import '../../domain/models/media_info.dart';
 import '../../domain/models/stream_option.dart';
 
-/// Selector interactivo, compacto y ergonómico de formatos y calidades multimedia.
-/// Estilo Cyberpunk / Synthwave de alto impacto visual con gradientes vivos
-/// y retroalimentación táctil de precisión para escritorio y móvil.
+/// Selector interactivo y ergonómico de formatos y calidades multimedia.
+/// Implementa la estética glassmórfica oscura de [design.html] con:
+/// - Control segmentado de modo (Video MP4 / Solo Audio).
+/// - Cuadrícula compacta de 2 columnas con insignias tonales e indicadores de selección.
+/// - Botón de acción con gradiente vibrante y resplandor.
 class QualitySelectorCard extends StatefulWidget {
   final MediaInfo mediaInfo;
   final bool isDownloading;
@@ -73,120 +74,86 @@ class _QualitySelectorCardState extends State<QualitySelectorCard> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final options = _currentOptions;
+    final isVideo = _selectedType == StreamType.video;
 
-    return Card(
-      elevation: 1,
-      color: theme.colorScheme.surfaceContainerLow,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
-        side: BorderSide(
-          color: theme.colorScheme.outline.withValues(alpha: 0.35),
-          width: 1.2,
+    return Container(
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color(0xFF14141E),
+            Color(0xFF0F0F17),
+          ],
         ),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.08),
+          width: 1.0,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.35),
+            blurRadius: 18,
+            offset: const Offset(0, 6),
+          ),
+        ],
       ),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            // Encabezado con selector de Modo (Cápsula Cyberpunk)
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final isCompact = constraints.maxWidth < 480;
-                final titleWidget = Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Modalidad de Descarga',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: -0.2,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Selecciona el formato y la calidad deseada',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                );
+            // Encabezado y control segmentado (Video / Audio)
+            _buildHeader(context),
+            const SizedBox(height: 14),
 
-                final toggleWidget = _buildModeToggle(context, theme);
-
-                if (isCompact) {
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      titleWidget,
-                      const SizedBox(height: 10),
-                      toggleWidget,
-                    ],
-                  );
-                }
-
-                return Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    titleWidget,
-                    toggleWidget,
-                  ],
-                );
-              },
-            ),
-            const SizedBox(height: 12),
+            // Línea divisoria
             Divider(
-              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
+              color: Colors.white.withValues(alpha: 0.06),
               height: 1,
+              thickness: 1,
             ),
             const SizedBox(height: 12),
 
-            // Título de la sección de calidades
+            // Encabezado de la cuadrícula de opciones
             Row(
               children: [
                 Icon(
-                  _selectedType == StreamType.video
-                      ? Icons.tune_rounded
-                      : Icons.equalizer_rounded,
-                  size: 16,
-                  color: _selectedType == StreamType.video
-                      ? const Color(0xFFA855F7)
-                      : const Color(0xFF06B6D4),
+                  isVideo ? Icons.tune_rounded : Icons.equalizer_rounded,
+                  size: 15,
+                  color: isVideo ? const Color(0xFFA855F7) : const Color(0xFF06B6D4),
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  _selectedType == StreamType.video
-                      ? 'Resoluciones disponibles:'
-                      : 'Formatos y códecs de audio:',
-                  style: theme.textTheme.bodyMedium?.copyWith(
+                  isVideo ? 'Resoluciones disponibles:' : 'Formatos y códecs de audio:',
+                  style: const TextStyle(
+                    fontSize: 12,
                     fontWeight: FontWeight.w700,
-                    color: theme.colorScheme.onSurface,
+                    color: Color(0xFFE2E8F0),
+                    letterSpacing: 0.3,
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 10),
 
-            // Cuadrícula Compacta de Opciones (máx 40px por fila)
+            // Cuadrícula Compacta de 2 Columnas (40px por fila)
             if (options.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 16.0),
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 20.0),
                 child: Center(
                   child: Text(
                     'No hay opciones disponibles para este modo.',
-                    style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+                    style: TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
                   ),
                 ),
               )
             else
               LayoutBuilder(
                 builder: (context, constraints) {
-                  final int crossAxisCount = constraints.maxWidth < 420
-                      ? 2
-                      : constraints.maxWidth < 620
-                          ? 3
-                          : 4;
+                  final int crossAxisCount = constraints.maxWidth < 360 ? 1 : 2;
 
                   return GridView.builder(
                     shrinkWrap: true,
@@ -205,7 +172,7 @@ class _QualitySelectorCardState extends State<QualitySelectorCard> {
                       return _OptionTile(
                         option: opt,
                         isSelected: isSelected,
-                        isAudio: _selectedType == StreamType.audioOnly,
+                        isAudio: !isVideo,
                         onTap: widget.isDownloading
                             ? null
                             : () => setState(() => _selectedOption = opt),
@@ -217,7 +184,7 @@ class _QualitySelectorCardState extends State<QualitySelectorCard> {
 
             const SizedBox(height: 16),
 
-            // Botón Principal de Descarga con Gradiente Cyberpunk Neón
+            // Botón de acción principal de Descarga
             _buildDownloadButton(context, theme),
           ],
         ),
@@ -225,34 +192,84 @@ class _QualitySelectorCardState extends State<QualitySelectorCard> {
     );
   }
 
-  Widget _buildModeToggle(BuildContext context, ThemeData theme) {
+  Widget _buildHeader(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isCompact = constraints.maxWidth < 420;
+
+        final titleWidget = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: const [
+            Text(
+              'Modalidad de Descarga',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+                letterSpacing: -0.2,
+              ),
+            ),
+            SizedBox(height: 2),
+            Text(
+              'Selecciona el formato y la calidad deseada',
+              style: TextStyle(
+                fontSize: 12,
+                color: Color(0xFF94A3B8),
+              ),
+            ),
+          ],
+        );
+
+        final toggleWidget = _buildModeToggle();
+
+        if (isCompact) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              titleWidget,
+              const SizedBox(height: 10),
+              toggleWidget,
+            ],
+          );
+        }
+
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            titleWidget,
+            toggleWidget,
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildModeToggle() {
     final isVideo = _selectedType == StreamType.video;
 
     return Container(
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerLowest,
+        color: Colors.black.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: theme.colorScheme.outline.withValues(alpha: 0.35),
-          width: 1.1,
+          color: Colors.white.withValues(alpha: 0.08),
+          width: 1.0,
         ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           _buildModeTab(
-            context: context,
-            theme: theme,
             label: 'Video (MP4)',
             icon: Icons.videocam_rounded,
             isSelected: isVideo,
             gradient: const LinearGradient(
-              colors: [Color(0xFF8B5CF6), Color(0xFF6366F1)],
+              colors: [Color(0xFF9333EA), Color(0xFF4F46E5)],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
-            shadowColor: const Color(0xFF8B5CF6).withValues(alpha: 0.35),
+            shadowColor: const Color(0xFF9333EA).withValues(alpha: 0.35),
             onTap: () {
               if (widget.isDownloading || isVideo) return;
               setState(() {
@@ -263,13 +280,11 @@ class _QualitySelectorCardState extends State<QualitySelectorCard> {
           ),
           const SizedBox(width: 4),
           _buildModeTab(
-            context: context,
-            theme: theme,
             label: 'Solo Audio',
             icon: Icons.headphones_rounded,
             isSelected: !isVideo,
             gradient: const LinearGradient(
-              colors: [Color(0xFF06B6D4), Color(0xFF3B82F6)],
+              colors: [Color(0xFF06B6D4), Color(0xFF2563EB)],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
@@ -288,8 +303,6 @@ class _QualitySelectorCardState extends State<QualitySelectorCard> {
   }
 
   Widget _buildModeTab({
-    required BuildContext context,
-    required ThemeData theme,
     required String label,
     required IconData icon,
     required bool isSelected,
@@ -302,7 +315,7 @@ class _QualitySelectorCardState extends State<QualitySelectorCard> {
       borderRadius: BorderRadius.circular(9),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6.5),
         decoration: BoxDecoration(
           gradient: isSelected ? gradient : null,
           color: isSelected ? null : Colors.transparent,
@@ -322,15 +335,16 @@ class _QualitySelectorCardState extends State<QualitySelectorCard> {
           children: [
             Icon(
               icon,
-              size: 16,
-              color: isSelected ? Colors.white : theme.colorScheme.onSurfaceVariant,
+              size: 15,
+              color: isSelected ? Colors.white : const Color(0xFF94A3B8),
             ),
             const SizedBox(width: 6),
             Text(
               label,
-              style: theme.textTheme.labelMedium?.copyWith(
+              style: TextStyle(
+                fontSize: 12,
                 fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                color: isSelected ? Colors.white : theme.colorScheme.onSurfaceVariant,
+                color: isSelected ? Colors.white : const Color(0xFF94A3B8),
               ),
             ),
           ],
@@ -344,11 +358,15 @@ class _QualitySelectorCardState extends State<QualitySelectorCard> {
     final bool isVideo = _selectedType == StreamType.video;
 
     final Gradient activeGradient = isVideo
-        ? AppTheme.primaryGradient
+        ? const LinearGradient(
+            colors: [Color(0xFF6366F1), Color(0xFF2563EB), Color(0xFF4F46E5)],
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+          )
         : AppTheme.audioGradient;
 
     final Color shadowColor = isVideo
-        ? const Color(0xFF8B5CF6).withValues(alpha: 0.38)
+        ? const Color(0xFF6366F1).withValues(alpha: 0.38)
         : const Color(0xFF06B6D4).withValues(alpha: 0.38);
 
     return SizedBox(
@@ -360,8 +378,14 @@ class _QualitySelectorCardState extends State<QualitySelectorCard> {
           gradient: isEnabled ? activeGradient : null,
           color: isEnabled
               ? null
-              : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+              : const Color(0xFF262638).withValues(alpha: 0.5),
           borderRadius: BorderRadius.circular(12),
+          border: isEnabled
+              ? Border.all(
+                  color: const Color(0xFF60A5FA).withValues(alpha: 0.35),
+                  width: 1,
+                )
+              : null,
           boxShadow: isEnabled
               ? [
                   BoxShadow(
@@ -382,19 +406,20 @@ class _QualitySelectorCardState extends State<QualitySelectorCard> {
               children: [
                 Icon(
                   isVideo ? Icons.download_rounded : Icons.audiotrack_rounded,
-                  size: 20,
+                  size: 19,
                   color: isEnabled
                       ? Colors.white
-                      : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+                      : const Color(0xFF64748B),
                 ),
                 const SizedBox(width: 8),
                 Text(
                   isVideo ? 'Descargar Video' : 'Extraer Audio',
-                  style: theme.textTheme.titleSmall?.copyWith(
+                  style: TextStyle(
+                    fontSize: 14,
                     fontWeight: FontWeight.w700,
                     color: isEnabled
                         ? Colors.white
-                        : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+                        : const Color(0xFF64748B),
                     letterSpacing: 0.2,
                   ),
                 ),
@@ -445,15 +470,16 @@ class _OptionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final badgeLabel = _getShortBadge();
     final cleanLabel = _getLabel();
 
     final Color activeAccent = isAudio
-        ? const Color(0xFF38BDF8) // Electric Cyan
+        ? const Color(0xFF06B6D4) // Electric Cyan
         : const Color(0xFFA855F7); // Neon Purple
 
-    final Color activeContainerBg = activeAccent.withValues(alpha: 0.16);
+    final Color activeContainerBg = isAudio
+        ? const Color(0xFF0369A1).withValues(alpha: 0.25)
+        : const Color(0xFF581C87).withValues(alpha: 0.25);
 
     return Tooltip(
       message: option.label,
@@ -464,69 +490,114 @@ class _OptionTile extends StatelessWidget {
           duration: const Duration(milliseconds: 180),
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           decoration: BoxDecoration(
-            color: isSelected
-                ? activeContainerBg
-                : theme.colorScheme.surfaceContainerLow,
+            color: isSelected ? activeContainerBg : Colors.black.withValues(alpha: 0.35),
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
               color: isSelected
-                  ? activeAccent
-                  : theme.colorScheme.outline.withValues(alpha: 0.3),
-              width: isSelected ? 1.8 : 1.1,
+                  ? activeAccent.withValues(alpha: 0.7)
+                  : Colors.white.withValues(alpha: 0.08),
+              width: isSelected ? 1.4 : 1.0,
             ),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: activeAccent.withValues(alpha: 0.25),
+                      blurRadius: 10,
+                      spreadRadius: -1,
+                    ),
+                  ]
+                : null,
           ),
           child: Row(
             children: [
+              // Badge de resolución / formato (FHD, 4K, MP3...)
               Container(
-                padding: EdgeInsets.symmetric(
-                  horizontal: isAudio ? 5 : 6,
-                  vertical: 2,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: isSelected
-                      ? activeAccent
-                      : theme.colorScheme.surfaceContainerHighest,
+                  gradient: isSelected
+                      ? (isAudio
+                          ? const LinearGradient(
+                              colors: [Color(0xFF06B6D4), Color(0xFF3B82F6)],
+                            )
+                          : const LinearGradient(
+                              colors: [Color(0xFFA855F7), Color(0xFF6366F1)],
+                            ))
+                      : null,
+                  color: isSelected ? null : Colors.white.withValues(alpha: 0.06),
                   borderRadius: BorderRadius.circular(5),
-                ),
-                child: isAudio
-                    ? Icon(
-                        Icons.audiotrack_rounded,
-                        size: 13,
-                        color: isSelected
-                            ? Colors.white
-                            : theme.colorScheme.onSurfaceVariant,
-                      )
-                    : Text(
-                        badgeLabel,
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.3,
-                          color: isSelected
-                              ? Colors.white
-                              : theme.colorScheme.onSurfaceVariant,
+                  border: isSelected
+                      ? null
+                      : Border.all(
+                          color: Colors.white.withValues(alpha: 0.04),
+                          width: 1,
                         ),
-                      ),
+                ),
+                child: Text(
+                  badgeLabel,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: isSelected ? FontWeight.w800 : FontWeight.w700,
+                    letterSpacing: 0.3,
+                    color: isSelected ? Colors.white : const Color(0xFF94A3B8),
+                  ),
+                ),
               ),
               const SizedBox(width: 8),
+
+              // Etiqueta de resolución o tasa de bits
               Expanded(
                 child: Text(
                   cleanLabel,
-                  style: theme.textTheme.bodySmall?.copyWith(
+                  style: TextStyle(
+                    fontSize: 12,
                     fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
-                    color: isSelected
-                        ? Colors.white
-                        : theme.colorScheme.onSurface,
+                    color: isSelected ? Colors.white : const Color(0xFFCBD5E1),
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
+
+              // Indicador derecho: Insignia de verificación si está seleccionado, o círculo sutil si no
               if (isSelected)
-                Icon(
-                  Icons.check_circle_rounded,
-                  size: 16,
-                  color: activeAccent,
+                Container(
+                  width: 18,
+                  height: 18,
+                  decoration: BoxDecoration(
+                    color: activeAccent.withValues(alpha: 0.2),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: activeAccent.withValues(alpha: 0.6),
+                      width: 1.2,
+                    ),
+                  ),
+                  child: Icon(
+                    Icons.check_rounded,
+                    size: 13,
+                    color: isAudio ? const Color(0xFF67E8F9) : const Color(0xFFD8B4FE),
+                  ),
+                )
+              else
+                Container(
+                  width: 14,
+                  height: 14,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.2),
+                      width: 1,
+                    ),
+                  ),
+                  child: Center(
+                    child: Container(
+                      width: 4,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: activeAccent.withValues(alpha: 0.25),
+                      ),
+                    ),
+                  ),
                 ),
             ],
           ),

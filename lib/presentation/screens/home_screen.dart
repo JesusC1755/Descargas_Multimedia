@@ -13,7 +13,6 @@ import '../../domain/models/media_info.dart';
 import '../../domain/models/stream_option.dart';
 import '../../domain/ports/media_engine_port.dart';
 import '../../infrastructure/desktop/desktop_process_engine.dart';
-import '../widgets/ambient_mesh_background.dart';
 import '../widgets/download_progress_card.dart';
 import '../widgets/media_preview_card.dart';
 import '../widgets/media_preview_skeleton.dart';
@@ -480,43 +479,108 @@ class _HomeScreenState extends State<HomeScreen> {
         autofocus: true,
         child: Scaffold(
           appBar: AppBar(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
             title: Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
+                // Logotipo de nube con gradiente exterior púrpura y acabado squircle
                 Container(
-                  padding: const EdgeInsets.all(6),
+                  width: 36,
+                  height: 36,
                   decoration: BoxDecoration(
-                    color: theme.colorScheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(10),
+                    gradient: const LinearGradient(
+                      begin: Alignment.bottomLeft,
+                      end: Alignment.topRight,
+                      colors: [
+                        Color(0xFF9333EA),
+                        Color(0xFF6366F1),
+                        Color(0xFFC084FC),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(11),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF9333EA).withValues(alpha: 0.35),
+                        blurRadius: 10,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
                   ),
-                  child: Icon(
-                    Icons.cloud_download_rounded,
-                    color: theme.colorScheme.onPrimaryContainer,
-                    size: 20,
+                  padding: const EdgeInsets.all(1.2),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF12111D),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Center(
+                      child: Icon(
+                        Icons.cloud_download_outlined,
+                        color: Color(0xFFD8B4FE),
+                        size: 20,
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 12),
-                Text(
+                const Text(
                   'Media Downloader',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.3,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                    letterSpacing: -0.2,
                   ),
                 ),
               ],
             ),
             actions: [
-              IconButton(
-                tooltip: 'Consola de Diagnóstico (Talker)',
-                icon: const Icon(Icons.terminal_rounded),
-                onPressed: _openLogs,
+              Tooltip(
+                message: 'Abrir terminal de depuración (Talker)',
+                child: InkWell(
+                  onTap: _openLogs,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(vertical: 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.04),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.08),
+                        width: 1,
+                      ),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.terminal_rounded,
+                          size: 15,
+                          color: Color(0xFFA855F7),
+                        ),
+                        SizedBox(width: 6),
+                        Text(
+                          'Console',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontFamily: 'monospace',
+                            color: Color(0xFFCBD5E1),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 16),
             ],
           ),
-          body: AmbientMeshBackground(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final isDesktopWide = constraints.maxWidth >= 960;
+          backgroundColor: const Color(0xFF0B0B10),
+          body: LayoutBuilder(
+            builder: (context, constraints) {
+              final isDesktopWide = constraints.maxWidth >= 960;
 
               return SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
@@ -570,7 +634,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ),
                                 const SizedBox(width: 16),
                                 Expanded(
-                                  flex: 6,
+                                  flex: 7,
                                   child: QualitySelectorCard(
                                     mediaInfo: _mediaInfo!,
                                     isDownloading: _isDownloading,
@@ -600,40 +664,43 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ),
-    ),
-  );
-}
+    );
+  }
 
 
   Widget _buildDirectoryBar(BuildContext context, ThemeData theme) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerLow,
+        color: Colors.white.withValues(alpha: 0.03),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: theme.colorScheme.outline.withValues(alpha: 0.35),
-          width: 1.2,
+          color: Colors.white.withValues(alpha: 0.08),
+          width: 1.0,
         ),
       ),
       child: Row(
         children: [
-          Icon(Icons.folder_special_outlined, size: 18, color: theme.colorScheme.primary),
+          const Icon(
+            Icons.folder_outlined,
+            size: 18,
+            color: Color(0xFFA855F7),
+          ),
           const SizedBox(width: 10),
-          Text(
+          const Text(
             'Carpeta de destino: ',
             style: TextStyle(
               fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: theme.colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF94A3B8),
             ),
           ),
           Expanded(
             child: Text(
               _downloadDirectory.isNotEmpty ? _downloadDirectory : 'Determinando directorio...',
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 12,
-                color: theme.colorScheme.onSurface,
+                color: Color(0xFFE9D5FF),
                 fontFamily: 'monospace',
               ),
               overflow: TextOverflow.ellipsis,
@@ -645,19 +712,31 @@ class _HomeScreenState extends State<HomeScreen> {
             child: InkWell(
               onTap: _selectDownloadDirectory,
               borderRadius: BorderRadius.circular(8),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                child: Row(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.08),
+                    width: 1.0,
+                  ),
+                ),
+                child: const Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.folder_open_rounded, size: 15, color: theme.colorScheme.primary),
-                    const SizedBox(width: 5),
+                    Icon(
+                      Icons.folder_open_rounded,
+                      size: 14,
+                      color: Color(0xFFD8B4FE),
+                    ),
+                    SizedBox(width: 6),
                     Text(
                       'Cambiar',
                       style: TextStyle(
                         fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: theme.colorScheme.primary,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFFCBD5E1),
                       ),
                     ),
                   ],
