@@ -2,7 +2,6 @@ import 'package:flex_color_scheme/flex_color_scheme.dart';
 import 'package:flutter/material.dart';
 
 class AppTheme {
-  // Esquema base: DeepBlue para un look moderno de escritorio
   static const FlexScheme _usedScheme = FlexScheme.deepBlue;
 
   static ThemeData get lightTheme {
@@ -14,7 +13,7 @@ class AppTheme {
       subThemesData: const FlexSubThemesData(
         blendOnLevel: 10,
         blendOnColors: false,
-        useTextTheme: true,
+        useMaterial3Typography: true,
         useM2StyleDividerInM3: false,
         defaultRadius: 12.0,
         elevatedButtonSchemeColor: SchemeColor.onPrimaryContainer,
@@ -36,7 +35,7 @@ class AppTheme {
       blendLevel: 13,
       subThemesData: const FlexSubThemesData(
         blendOnLevel: 20,
-        useTextTheme: true,
+        useMaterial3Typography: true,
         useM2StyleDividerInM3: false,
         defaultRadius: 12.0,
         elevatedButtonSchemeColor: SchemeColor.onPrimaryContainer,
