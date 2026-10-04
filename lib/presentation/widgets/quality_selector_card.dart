@@ -3,9 +3,8 @@ import '../../core/utils/formatters.dart';
 import '../../domain/models/media_info.dart';
 import '../../domain/models/stream_option.dart';
 
-/// Selector interactivo y ergonómico de formatos y calidades multimedia.
-/// Organiza resoluciones de video (4K, 1080p, etc.) y formatos de audio (MP3, FLAC, M4A)
-/// en tarjetas visuales seleccionables con badges de bitrate, tamaño y contenedor.
+/// Selector interactivo, compacto y ergonómico de formatos y calidades multimedia.
+/// Optimizado para minimizar la altura vertical y evitar desplazamientos excesivos (scroll).
 class QualitySelectorCard extends StatefulWidget {
   final MediaInfo mediaInfo;
   final bool isDownloading;
@@ -68,14 +67,14 @@ class _QualitySelectorCardState extends State<QualitySelectorCard> {
         ),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(20.0),
+        padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Encabezado con selector de Modo (SegmentedButton)
             LayoutBuilder(
               builder: (context, constraints) {
-                final isCompact = constraints.maxWidth < 520;
+                final isCompact = constraints.maxWidth < 480;
                 final titleWidget = Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -125,7 +124,7 @@ class _QualitySelectorCardState extends State<QualitySelectorCard> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       titleWidget,
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 10),
                       segmentWidget,
                     ],
                   );
@@ -140,12 +139,12 @@ class _QualitySelectorCardState extends State<QualitySelectorCard> {
                 );
               },
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             Divider(
               color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
               height: 1,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
 
             // Título de la sección de opciones
             Row(
@@ -169,12 +168,12 @@ class _QualitySelectorCardState extends State<QualitySelectorCard> {
                 ),
               ],
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 10),
 
-            // Cuadrícula/Lista de Opciones
+            // Cuadrícula Compacta de Opciones (máx 40px por fila)
             if (options.isEmpty)
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: 20.0),
+                padding: const EdgeInsets.symmetric(vertical: 16.0),
                 child: Center(
                   child: Text(
                     'No hay opciones disponibles para este modo.',
@@ -183,64 +182,54 @@ class _QualitySelectorCardState extends State<QualitySelectorCard> {
                 ),
               )
             else
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final crossAxisCount = constraints.maxWidth > 650
-                      ? 3
-                      : constraints.maxWidth > 420
-                          ? 2
-                          : 1;
-
-                  return GridView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: crossAxisCount,
-                      crossAxisSpacing: 10,
-                      mainAxisSpacing: 10,
-                      childAspectRatio: crossAxisCount == 1 ? 4.2 : 2.5,
-                    ),
-                    itemCount: options.length,
-                    itemBuilder: (context, index) {
-                      final opt = options[index];
-                      final isSelected = _selectedOption == opt;
-                      return _OptionTile(
-                        option: opt,
-                        isSelected: isSelected,
-                        isAudio: _selectedType == StreamType.audioOnly,
-                        onTap: widget.isDownloading
-                            ? null
-                            : () => setState(() => _selectedOption = opt),
-                      );
-                    },
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: 210,
+                  mainAxisExtent: 40,
+                  crossAxisSpacing: 8,
+                  mainAxisSpacing: 8,
+                ),
+                itemCount: options.length,
+                itemBuilder: (context, index) {
+                  final opt = options[index];
+                  final isSelected = _selectedOption == opt;
+                  return _OptionTile(
+                    option: opt,
+                    isSelected: isSelected,
+                    isAudio: _selectedType == StreamType.audioOnly,
+                    onTap: widget.isDownloading
+                        ? null
+                        : () => setState(() => _selectedOption = opt),
                   );
                 },
               ),
 
-            const SizedBox(height: 22),
+            const SizedBox(height: 16),
 
             // Botón Principal de Descarga
             SizedBox(
               width: double.infinity,
-              height: 52,
+              height: 48,
               child: FilledButton.icon(
                 onPressed: (widget.isDownloading || _selectedOption == null)
                     ? null
                     : () => widget.onStartDownload(_selectedOption!),
-                icon: const Icon(Icons.downloading_rounded, size: 22),
+                icon: const Icon(Icons.download_rounded, size: 20),
                 label: Text(
                   _selectedType == StreamType.video
-                      ? 'Descargar Video en ${_selectedOption?.label ?? ""}'
-                      : 'Extraer Audio en ${_selectedOption?.extension.toUpperCase() ?? ""}',
+                      ? 'Descargar Video'
+                      : 'Extraer Audio',
                   style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w700,
                     color: theme.colorScheme.onPrimary,
                   ),
                 ),
                 style: FilledButton.styleFrom(
-                  elevation: 2,
+                  elevation: 1,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(12),
                   ),
                 ),
               ),
@@ -265,110 +254,119 @@ class _OptionTile extends StatelessWidget {
     required this.onTap,
   });
 
-  String _getQualityBadge() {
+  String _getShortBadge() {
     if (isAudio) {
       return option.extension.toUpperCase();
     }
     final h = option.height ?? 0;
-    if (h >= 2160) return '4K UHD';
-    if (h >= 1440) return '2K QHD';
+    if (h >= 2160) return '4K';
+    if (h >= 1440) return '2K';
     if (h >= 1080) return 'FHD';
     if (h >= 720) return 'HD';
     return 'SD';
   }
 
+  String _getLabel() {
+    if (isAudio) {
+      return option.extension.toUpperCase();
+    }
+    final h = option.height;
+    if (h != null && h > 0) {
+      return '${h}p';
+    }
+    return option.label;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final badgeLabel = _getQualityBadge();
+    final badgeLabel = _getShortBadge();
+    final cleanLabel = _getLabel();
 
     final isHighRes = (option.height ?? 0) >= 1080 ||
-        option.extension.toLowerCase() == 'flac' ||
-        (option.note?.contains('320') ?? false);
+        option.extension.toLowerCase() == 'flac';
 
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? theme.colorScheme.primaryContainer.withValues(alpha: 0.6)
-              : theme.colorScheme.surfaceContainerLow,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
+    return Tooltip(
+      message: option.label,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
             color: isSelected
-                ? theme.colorScheme.primary
-                : theme.colorScheme.outline.withValues(alpha: 0.3),
-            width: isSelected ? 2 : 1.2,
+                ? theme.colorScheme.primaryContainer.withValues(alpha: 0.6)
+                : theme.colorScheme.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: isSelected
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.outline.withValues(alpha: 0.3),
+              width: isSelected ? 1.8 : 1.1,
+            ),
           ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-              decoration: BoxDecoration(
-                color: isSelected
-                    ? theme.colorScheme.primary
-                    : isHighRes
-                        ? theme.colorScheme.tertiaryContainer
-                        : theme.colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Text(
-                badgeLabel,
-                style: theme.textTheme.labelSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
+          child: Row(
+            children: [
+              Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: isAudio ? 5 : 6,
+                  vertical: 2,
+                ),
+                decoration: BoxDecoration(
                   color: isSelected
-                      ? theme.colorScheme.onPrimary
+                      ? theme.colorScheme.primary
                       : isHighRes
-                          ? theme.colorScheme.onTertiaryContainer
-                          : theme.colorScheme.onSurfaceVariant,
+                          ? theme.colorScheme.tertiaryContainer
+                          : theme.colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(5),
+                ),
+                child: isAudio
+                    ? Icon(
+                        Icons.audiotrack_rounded,
+                        size: 13,
+                        color: isSelected
+                            ? theme.colorScheme.onPrimary
+                            : isHighRes
+                                ? theme.colorScheme.onTertiaryContainer
+                                : theme.colorScheme.onSurfaceVariant,
+                      )
+                    : Text(
+                        badgeLabel,
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.3,
+                          color: isSelected
+                              ? theme.colorScheme.onPrimary
+                              : isHighRes
+                                  ? theme.colorScheme.onTertiaryContainer
+                                  : theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  cleanLabel,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                    color: isSelected
+                        ? theme.colorScheme.onPrimaryContainer
+                        : theme.colorScheme.onSurface,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    option.label,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                      color: isSelected
-                          ? theme.colorScheme.onPrimaryContainer
-                          : theme.colorScheme.onSurface,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  if (option.filesize != null || option.note != null) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      option.filesize != null
-                          ? 'Aprox. ${Formatters.formatBytes(option.filesize)}'
-                          : (option.note ?? ''),
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                        fontSize: 11,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            if (isSelected)
-              Icon(
-                Icons.check_circle_rounded,
-                size: 20,
-                color: theme.colorScheme.primary,
-              ),
-          ],
+              if (isSelected)
+                Icon(
+                  Icons.check_circle_rounded,
+                  size: 16,
+                  color: theme.colorScheme.primary,
+                ),
+            ],
+          ),
         ),
       ),
     );

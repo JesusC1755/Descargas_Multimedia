@@ -146,25 +146,25 @@ class DesktopProcessEngine implements IMediaEngine {
       final audioOptions = const <StreamOption>[
         StreamOption(
           formatId: 'bestaudio',
-          label: 'MP3 (Máxima Calidad 320 kbps)',
+          label: 'MP3',
           extension: 'mp3',
           isAudioOnly: true,
         ),
         StreamOption(
           formatId: 'bestaudio[ext=m4a]/bestaudio',
-          label: 'M4A (AAC Original)',
+          label: 'M4A',
           extension: 'm4a',
           isAudioOnly: true,
         ),
         StreamOption(
           formatId: 'bestaudio',
-          label: 'FLAC (Lossless sin compresión)',
+          label: 'FLAC',
           extension: 'flac',
           isAudioOnly: true,
         ),
         StreamOption(
           formatId: 'bestaudio',
-          label: 'Opus (Alta Fidelidad / Eficiente)',
+          label: 'Opus',
           extension: 'opus',
           isAudioOnly: true,
         ),

@@ -21,8 +21,8 @@ import '../widgets/url_input_card.dart';
 
 /// Pantalla principal adaptativa de Media Downloader.
 /// Orquesta la verificación de dependencias del sistema (yt-dlp, FFmpeg),
-/// atajos de teclado de escritorio, detección inteligente de portapapeles,
-/// layouts responsivos (Desktop vs Mobile) y el ciclo de vida de descargas.
+/// atajos de teclado de escritorio, layouts responsivos (Desktop vs Mobile)
+/// y el ciclo de vida de descargas.
 class HomeScreen extends StatefulWidget {
   final VoidCallback onToggleTheme;
   final bool isDarkMode;
@@ -37,7 +37,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
+class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _urlController = TextEditingController();
   final IMediaEngine _engine = DesktopProcessEngine();
 
@@ -50,46 +50,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   StreamOption? _lastSelectedOption;
 
   String _downloadDirectory = '';
-  String? _clipboardDetectedUrl;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
     _checkSystemRequirements();
     _initDownloadDirectory();
   }
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
     _urlController.dispose();
     _downloadSub?.cancel();
     super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _checkClipboardForMediaUrl();
-    }
-  }
-
-  /// Detección inteligente de URL en portapapeles al enfocar la ventana.
-  Future<void> _checkClipboardForMediaUrl() async {
-    try {
-      final data = await Clipboard.getData(Clipboard.kTextPlain);
-      final text = data?.text?.trim() ?? '';
-      if (text.startsWith('http://') || text.startsWith('https://')) {
-        if (text != _urlController.text.trim() && text != _clipboardDetectedUrl) {
-          if (mounted) {
-            setState(() {
-              _clipboardDetectedUrl = text;
-            });
-          }
-        }
-      }
-    } catch (_) {}
   }
 
   Future<void> _checkSystemRequirements() async {
@@ -318,7 +291,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _isAnalyzing = true;
       _mediaInfo = null;
       _downloadProgress = null;
-      _clipboardDetectedUrl = null;
     });
 
     try {
@@ -513,11 +485,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        // Notificación contextual de portapapeles detectado
-                        if (_clipboardDetectedUrl != null) ...[
-                          _buildClipboardBanner(context, theme),
-                          const SizedBox(height: 14),
-                        ],
 
                         // Barra de información de ruta y acceso rápido al explorador
                         _buildDirectoryBar(context, theme),
@@ -600,50 +567,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildClipboardBanner(BuildContext context, ThemeData theme) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.primaryContainer.withValues(alpha: 0.7),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: theme.colorScheme.primary.withValues(alpha: 0.3),
-        ),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.content_paste_search_rounded,
-              color: theme.colorScheme.onPrimaryContainer, size: 20),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              'Enlace detectado en el portapapeles: $_clipboardDetectedUrl',
-              style: theme.textTheme.bodySmall?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: theme.colorScheme.onPrimaryContainer,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          const SizedBox(width: 8),
-          FilledButton.tonal(
-            onPressed: () => _analyzeUrl(_clipboardDetectedUrl),
-            style: FilledButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              visualDensity: VisualDensity.compact,
-            ),
-            child: const Text('Analizar'),
-          ),
-          IconButton(
-            tooltip: 'Ignorar',
-            icon: const Icon(Icons.close_rounded, size: 18),
-            onPressed: () => setState(() => _clipboardDetectedUrl = null),
-          ),
-        ],
-      ),
-    );
-  }
 
   Widget _buildDirectoryBar(BuildContext context, ThemeData theme) {
     return Container(
