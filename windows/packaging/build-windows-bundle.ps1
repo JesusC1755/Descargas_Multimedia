@@ -10,6 +10,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$ProgressPreference = "SilentlyContinue"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectRoot = (Resolve-Path "$ScriptDir\..\..").Path
 Set-Location $ProjectRoot
@@ -123,6 +124,16 @@ function Ensure-Tool {
             Copy-Item -Path $Found.FullName -Destination $DestFile -Force
         } else {
             Write-Error "No se encontro $ToolName dentro del archivo descargado."
+        }
+
+        # Si se extrajo ffmpeg.exe, aprovechar para extraer ffprobe.exe del mismo archivo
+        if ($ToolName -eq "ffmpeg.exe") {
+            $ProbeFound = Get-ChildItem -Path $ExtractDir -Filter "ffprobe.exe" -Recurse | Select-Object -First 1
+            if ($ProbeFound) {
+                Copy-Item -Path $ProbeFound.FullName -Destination (Join-Path $LocalCache "ffprobe.exe") -Force
+                Copy-Item -Path $ProbeFound.FullName -Destination (Join-Path $ToolsDir "ffprobe.exe") -Force
+                Write-Host "    [OK] ffprobe.exe extraido y cacheado del mismo paquete." -ForegroundColor Green
+            }
         }
         Remove-Item -Path $ZipTemp -Force -ErrorAction SilentlyContinue
         Remove-Item -Path $ExtractDir -Recurse -Force -ErrorAction SilentlyContinue

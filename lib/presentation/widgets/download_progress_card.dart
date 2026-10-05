@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:talker_flutter/talker_flutter.dart';
@@ -376,12 +377,14 @@ class DownloadProgressCard extends StatelessWidget {
               icon: const Icon(Icons.copy_all_rounded, size: 16),
               label: const Text('Copiar Traza'),
             ),
-            const SizedBox(width: 10),
-            OutlinedButton.icon(
-              onPressed: () => _openTalkerScreen(context),
-              icon: const Icon(Icons.terminal_rounded, size: 16),
-              label: const Text('Ver Consola de Logs'),
-            ),
+            if (kDebugMode) ...[
+              const SizedBox(width: 10),
+              OutlinedButton.icon(
+                onPressed: () => _openTalkerScreen(context),
+                icon: const Icon(Icons.terminal_rounded, size: 16),
+                label: const Text('Ver Consola de Logs'),
+              ),
+            ],
             if (onRetry != null) ...[
               const Spacer(),
               FilledButton.icon(

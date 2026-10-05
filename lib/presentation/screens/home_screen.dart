@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
@@ -462,49 +463,51 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               actions: [
-                Padding(
-                  padding: const EdgeInsets.only(top: 16),
-                  child: Tooltip(
-                    message: 'Abrir terminal de depuración (Talker)',
-                    child: InkWell(
-                      onTap: _openLogs,
-                      borderRadius: BorderRadius.circular(8),
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(vertical: 10),
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.04),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.08),
-                            width: 1,
+                if (kDebugMode) ...[
+                  Padding(
+                    padding: const EdgeInsets.only(top: 16),
+                    child: Tooltip(
+                      message: 'Abrir terminal de depuración (Talker)',
+                      child: InkWell(
+                        onTap: _openLogs,
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(vertical: 10),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.04),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.08),
+                              width: 1,
+                            ),
                           ),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.terminal_rounded,
-                              size: 15,
-                              color: Color(0xFFA855F7),
-                            ),
-                            SizedBox(width: 6),
-                            Text(
-                              'Console',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontFamily: 'monospace',
-                                color: Color(0xFFCBD5E1),
-                                fontWeight: FontWeight.w500,
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.terminal_rounded,
+                                size: 15,
+                                color: Color(0xFFA855F7),
                               ),
-                            ),
-                          ],
+                              SizedBox(width: 6),
+                              Text(
+                                'Console',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontFamily: 'monospace',
+                                  color: Color(0xFFCBD5E1),
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 16),
+                  const SizedBox(width: 16),
+                ],
               ],
             ),
             backgroundColor: Colors.transparent,
