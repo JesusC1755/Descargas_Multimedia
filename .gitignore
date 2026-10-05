@@ -41,6 +41,7 @@ pubspec.lock
 **/generated_plugin_registrant.h
 **/generated_plugins.cmake
 windows/tools/
+linux/tools/
 *.bak
 
 # Symbolication related
