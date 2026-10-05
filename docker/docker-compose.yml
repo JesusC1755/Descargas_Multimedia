@@ -1,0 +1,32 @@
+# ==============================================================================
+# docker-compose.yml para Media Downloader (Flutter Linux Desktop)
+# Habilita renderizado gráfico nativo X11/Wayland, aceleración GPU y volúmenes persistentes.
+# ==============================================================================
+
+services:
+  media-downloader:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        USER_ID: "${USER_ID:-1000}"
+        GROUP_ID: "${GROUP_ID:-1000}"
+    image: media-downloader:latest
+    container_name: media_downloader_app
+    # Modos host para comunicación sin latencia con el servidor X11 / Wayland
+    network_mode: host
+    ipc: host
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+      - WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-}
+      - XAUTHORITY=${XAUTHORITY:-}
+    volumes:
+      # Socket X11 para proyectar la interfaz gráfica en el host
+      - /tmp/.X11-unix:/tmp/.X11-unix:ro
+      # Mapeo de la carpeta de descargas del usuario host
+      - ${HOST_DOWNLOADS_DIR:-$HOME/Descargas}:/home/appuser/Descargas
+    devices:
+      # Acceso a GPU (Intel / AMD / NVIDIA con Mesa DRI) para renderizado a 60 FPS
+      - /dev/dri:/dev/dri
+    stdin_open: true
+    tty: true

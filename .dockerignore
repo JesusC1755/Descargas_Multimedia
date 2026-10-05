@@ -1,0 +1,45 @@
+# ==============================================================================
+# .dockerignore para Media Downloader (Flutter Linux Desktop)
+# ==============================================================================
+
+# Control de Versiones
+.git
+.gitignore
+
+# Artefactos y Cachés de Dart / Flutter
+build/
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+
+# Configuraciones de Entorno e IDEs
+.idea/
+.vscode/
+*.iml
+*.sublime-*
+
+# Plataformas Móviles y No Usadas en Linux
+android/
+ios/
+windows/
+macos/
+web/
+
+# Documentación, Diseños y Scripts Utilitarios
+*.md
+design.html
+restaurar_conversaciones.py
+
+# Archivos de Contenerización y CI/CD
+Dockerfile
+docker-compose*.yml
+.dockerignore
+run-docker.sh
+.github/
+
+# Logs y Archivos Temporales
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
