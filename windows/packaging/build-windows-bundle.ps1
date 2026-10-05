@@ -28,6 +28,17 @@ if (-not $SkipBuild) {
         Write-Error "No se encontro 'flutter' en el PATH. Asegurate de tener instalado el SDK de Flutter."
     }
 
+    Write-Host "[*] Resolviendo paquetes (flutter pub get)..." -ForegroundColor Yellow
+    flutter pub get
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "Fallo la resolucion de paquetes con el archivo de bloqueo existente."
+        Write-Host "[*] Regenerando dependencias para la version local de Flutter..." -ForegroundColor Yellow
+        if (Test-Path "$ProjectRoot\pubspec.lock") {
+            Remove-Item -Path "$ProjectRoot\pubspec.lock" -Force -ErrorAction SilentlyContinue
+            flutter pub get
+        }
+    }
+
     Write-Host "[*] Compilando aplicacion Flutter para Windows (Release)..." -ForegroundColor Yellow
     flutter build windows --release
     if ($LASTEXITCODE -ne 0) {
