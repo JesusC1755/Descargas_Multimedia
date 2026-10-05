@@ -34,22 +34,49 @@ class DesktopProcessEngine implements IMediaEngine {
     unicode: true,
   );
 
-  String _getYtDlpExecutable() {
-    final home = Platform.environment['HOME'] ?? '';
-    final localBin = '$home/.local/bin/yt-dlp';
-    if (File(localBin).existsSync()) {
-      return localBin;
+  String _resolveToolExecutable(String baseName) {
+    final isWin = Platform.isWindows;
+    final exeName = isWin ? '$baseName.exe' : baseName;
+
+    // 1. Prioridad: Buscar en la carpeta tools/ o bin/ empaquetada junto al ejecutable
+    try {
+      final appDir = File(Platform.resolvedExecutable).parent.path;
+      final candidates = [
+        '$appDir${Platform.pathSeparator}tools${Platform.pathSeparator}$exeName',
+        '$appDir${Platform.pathSeparator}bin${Platform.pathSeparator}$exeName',
+        '$appDir${Platform.pathSeparator}$exeName',
+      ];
+      for (final candidate in candidates) {
+        if (File(candidate).existsSync()) {
+          return candidate;
+        }
+      }
+    } catch (_) {}
+
+    // 2. Rutas estándar conocidas en Linux / Unix
+    if (!isWin) {
+      final home = Platform.environment['HOME'] ?? '';
+      final localBin = '$home/.local/bin/$exeName';
+      if (File(localBin).existsSync()) return localBin;
+
+      final usrLocalBin = '/usr/local/bin/$exeName';
+      if (File(usrLocalBin).existsSync()) return usrLocalBin;
+
+      final usrBin = '/usr/bin/$exeName';
+      if (File(usrBin).existsSync()) return usrBin;
     }
-    const usrLocalBin = '/usr/local/bin/yt-dlp';
-    if (File(usrLocalBin).existsSync()) {
-      return usrLocalBin;
-    }
-    return 'yt-dlp';
+
+    // 3. Fallback al nombre del binario para resolución mediante el PATH del sistema
+    return exeName;
   }
 
+  String _getYtDlpExecutable() => _resolveToolExecutable('yt-dlp');
+  String _getFfmpegExecutable() => _resolveToolExecutable('ffmpeg');
+  String _getFfprobeExecutable() => _resolveToolExecutable('ffprobe');
+  String _getNodeExecutable() => _resolveToolExecutable('node');
+
   List<String> _getJsRuntimeArgs() {
-    final home = Platform.environment['HOME'] ?? '';
-    final nodeBin = '$home/.local/bin/node';
+    final nodeBin = _getNodeExecutable();
     if (File(nodeBin).existsSync()) {
       return ['--js-runtimes', 'node:$nodeBin'];
     }
@@ -76,17 +103,18 @@ class DesktopProcessEngine implements IMediaEngine {
 
   @override
   Future<bool> isFFmpegAvailable() async {
+    final bin = _getFfmpegExecutable();
     try {
-      final res = await Process.run('ffmpeg', ['-version']);
+      final res = await Process.run(bin, ['-version']);
       final available = res.exitCode == 0;
       if (available) {
-        talker.info('FFmpeg detectado correctamente en el sistema.');
+        talker.info('FFmpeg ($bin) detectado correctamente en el sistema.');
       } else {
-        talker.warning('FFmpeg no está accesible.');
+        talker.warning('FFmpeg falló con código ${res.exitCode}: ${res.stderr}');
       }
       return available;
     } catch (e, st) {
-      talker.error('Error al verificar FFmpeg en el sistema', e, st);
+      talker.error('Error al verificar FFmpeg ($bin) en el sistema', e, st);
       return false;
     }
   }
@@ -412,6 +440,12 @@ class DesktopProcessEngine implements IMediaEngine {
       ]);
     }
 
+    final ffmpegBin = _getFfmpegExecutable();
+    final ffmpegDir = File(ffmpegBin).existsSync() ? File(ffmpegBin).parent.path : null;
+    if (ffmpegDir != null) {
+      args.addAll(['--ffmpeg-location', ffmpegDir]);
+    }
+
     talker.info('Lanzando comando: $bin ${args.join(" ")}');
     final stderrBuffer = StringBuffer();
     String? downloadedFilePath;
@@ -545,7 +579,8 @@ class DesktopProcessEngine implements IMediaEngine {
     DownloadProgress currentProgress,
   ) async {
     try {
-      final probeResult = await Process.run('ffprobe', [
+      final ffprobeBin = _getFfprobeExecutable();
+      final probeResult = await Process.run(ffprobeBin, [
         '-v', 'error',
         '-select_streams', 'v:0',
         '-show_entries', 'stream=codec_name',
@@ -591,7 +626,8 @@ class DesktopProcessEngine implements IMediaEngine {
         tempPath,
       ];
 
-      final transcodeProcess = await Process.start('ffmpeg', ffmpegArgs);
+      final ffmpegBin = _getFfmpegExecutable();
+      final transcodeProcess = await Process.start(ffmpegBin, ffmpegArgs);
       _activeTranscodeProcess = transcodeProcess;
 
       final transcodeExit = await transcodeProcess.exitCode;
@@ -642,9 +678,17 @@ class DesktopProcessEngine implements IMediaEngine {
   @override
   void cancel() {
     talker.warning('Cancelando proceso de descarga activo a petición del usuario.');
-    _activeProcess?.kill(ProcessSignal.sigterm);
+    try {
+      _activeProcess?.kill();
+    } catch (e) {
+      talker.warning('Error al cancelar _activeProcess: $e');
+    }
     _activeProcess = null;
-    _activeTranscodeProcess?.kill(ProcessSignal.sigterm);
+    try {
+      _activeTranscodeProcess?.kill();
+    } catch (e) {
+      talker.warning('Error al cancelar _activeTranscodeProcess: $e');
+    }
     _activeTranscodeProcess = null;
   }
 }
