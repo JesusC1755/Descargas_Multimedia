@@ -45,11 +45,11 @@ static void my_application_activate(GApplication* application) {
   if (use_header_bar) {
     GtkHeaderBar* header_bar = GTK_HEADER_BAR(gtk_header_bar_new());
     gtk_widget_show(GTK_WIDGET(header_bar));
-    gtk_header_bar_set_title(header_bar, "media_downloader");
+    gtk_header_bar_set_title(header_bar, "Media Downloader");
     gtk_header_bar_set_show_close_button(header_bar, TRUE);
     gtk_window_set_titlebar(window, GTK_WIDGET(header_bar));
   } else {
-    gtk_window_set_title(window, "media_downloader");
+    gtk_window_set_title(window, "Media Downloader");
   }
 
   gtk_window_set_default_size(window, 1280, 720);
@@ -57,6 +57,50 @@ static void my_application_activate(GApplication* application) {
   g_autoptr(FlDartProject) project = fl_dart_project_new();
   fl_dart_project_set_dart_entrypoint_arguments(
       project, self->dart_entrypoint_arguments);
+
+  // Configure window icon for Linux taskbar, dock, and window manager
+  const gchar* assets_path = fl_dart_project_get_assets_path(project);
+  GList* icon_list = nullptr;
+  const gchar* icon_filenames[] = {
+      "app_icon_32.png", "app_icon_64.png", "app_icon_128.png",
+      "app_icon_256.png", "app_icon.png", nullptr};
+
+  for (int i = 0; icon_filenames[i] != nullptr; i++) {
+    g_autofree gchar* icon_file = g_build_filename(
+        assets_path, "assets", "icons", icon_filenames[i], nullptr);
+    const gchar* resolved_path = icon_file;
+    g_autofree gchar* cwd_file = nullptr;
+
+    if (!g_file_test(resolved_path, G_FILE_TEST_EXISTS)) {
+      cwd_file = g_build_filename("assets", "icons", icon_filenames[i], nullptr);
+      if (g_file_test(cwd_file, G_FILE_TEST_EXISTS)) {
+        resolved_path = cwd_file;
+      }
+    }
+
+    if (g_file_test(resolved_path, G_FILE_TEST_EXISTS)) {
+      GError* err = nullptr;
+      GdkPixbuf* pixbuf = gdk_pixbuf_new_from_file(resolved_path, &err);
+      if (pixbuf != nullptr) {
+        icon_list = g_list_append(icon_list, pixbuf);
+      } else if (err != nullptr) {
+        g_clear_error(&err);
+      }
+    }
+  }
+
+  if (icon_list != nullptr) {
+    gtk_window_set_icon_list(window, icon_list);
+    gtk_window_set_default_icon_list(icon_list);
+    g_list_free_full(icon_list, g_object_unref);
+  } else {
+    g_autofree gchar* fallback_icon = g_build_filename(
+        assets_path, "assets", "icons", "app_icon.png", nullptr);
+    if (g_file_test(fallback_icon, G_FILE_TEST_EXISTS)) {
+      gtk_window_set_icon_from_file(window, fallback_icon, nullptr);
+      gtk_window_set_default_icon_from_file(fallback_icon, nullptr);
+    }
+  }
 
   FlView* view = fl_view_new(project);
   GdkRGBA background_color;
