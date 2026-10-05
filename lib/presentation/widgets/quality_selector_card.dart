@@ -3,12 +3,12 @@ import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
 import '../../domain/models/media_info.dart';
 import '../../domain/models/stream_option.dart';
-
 /// Selector interactivo y ergonómico de formatos y calidades multimedia.
 /// Implementa la estética glassmórfica oscura de [design.html] con:
 /// - Control segmentado de modo (Video MP4 / Solo Audio).
 /// - Cuadrícula compacta de 2 columnas con insignias tonales e indicadores de selección.
 /// - Botón de acción con gradiente vibrante y resplandor.
+/// - Borde reactivo dinámico (Cian para Video, Fucsia para Audio).
 class QualitySelectorCard extends StatefulWidget {
   final MediaInfo mediaInfo;
   final bool isDownloading;
@@ -76,35 +76,58 @@ class _QualitySelectorCardState extends State<QualitySelectorCard> {
     final options = _currentOptions;
     final isVideo = _selectedType == StreamType.video;
 
-    return Container(
+    final borderColors = isVideo
+        ? const [Color(0xFF38BDF8), Color(0xFF06B6D4)]
+        : const [Color(0xFFFB7185), Color(0xFFE11D48)];
+    final glowColor = isVideo ? const Color(0xFF06B6D4) : const Color(0xFFE11D48);
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOutCubic,
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
           colors: [
-            Color(0xFF14141E),
-            Color(0xFF0F0F17),
+            borderColors[0].withValues(alpha: 0.60),
+            borderColors[1].withValues(alpha: 0.25),
+            Colors.white.withValues(alpha: 0.04),
           ],
+          stops: const [0.0, 0.45, 1.0],
         ),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.08),
-          width: 1.0,
-        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.35),
+            color: glowColor.withValues(alpha: isVideo ? 0.20 : 0.22),
+            blurRadius: 22,
+            offset: const Offset(0, 4),
+          ),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.45),
             blurRadius: 18,
             offset: const Offset(0, 6),
           ),
         ],
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
+      padding: const EdgeInsets.all(1.2),
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFF14141E),
+              Color(0xFF0F0F17),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(16.8),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
             // Encabezado y control segmentado (Video / Audio)
             _buildHeader(context),
             const SizedBox(height: 14),
@@ -189,8 +212,9 @@ class _QualitySelectorCardState extends State<QualitySelectorCard> {
           ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildHeader(BuildContext context) {
     return LayoutBuilder(

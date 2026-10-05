@@ -45,6 +45,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   String _downloadDirectory = '';
 
+
+
   @override
   void initState() {
     super.initState();
@@ -446,102 +448,109 @@ class _HomeScreenState extends State<HomeScreen> {
             appBar: AppBar(
               backgroundColor: Colors.transparent,
               elevation: 0,
-            title: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Logotipo de nube con gradiente exterior púrpura y acabado squircle
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      begin: Alignment.bottomLeft,
-                      end: Alignment.topRight,
-                      colors: [
-                        Color(0xFF9333EA),
-                        Color(0xFF6366F1),
-                        Color(0xFFC084FC),
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(11),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF9333EA).withValues(alpha: 0.35),
-                        blurRadius: 10,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  padding: const EdgeInsets.all(1.2),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF12111D),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Center(
-                      child: Icon(
-                        Icons.cloud_download_outlined,
-                        color: Color(0xFFD8B4FE),
-                        size: 20,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                const Text(
-                  'Media Downloader',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                    letterSpacing: -0.2,
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              Tooltip(
-                message: 'Abrir terminal de depuración (Talker)',
-                child: InkWell(
-                  onTap: _openLogs,
-                  borderRadius: BorderRadius.circular(8),
-                  child: Container(
-                    margin: const EdgeInsets.symmetric(vertical: 10),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.04),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.08),
-                        width: 1,
-                      ),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.terminal_rounded,
-                          size: 15,
-                          color: Color(0xFFA855F7),
+              toolbarHeight: 70,
+              title: Padding(
+                padding: const EdgeInsets.only(top: 16),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Logotipo de nube con gradiente exterior púrpura y acabado squircle
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          begin: Alignment.bottomLeft,
+                          end: Alignment.topRight,
+                          colors: [
+                            Color(0xFF9333EA),
+                            Color(0xFF6366F1),
+                            Color(0xFFC084FC),
+                          ],
                         ),
-                        SizedBox(width: 6),
-                        Text(
-                          'Console',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontFamily: 'monospace',
-                            color: Color(0xFFCBD5E1),
-                            fontWeight: FontWeight.w500,
+                        borderRadius: BorderRadius.circular(11),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF9333EA).withValues(alpha: 0.35),
+                            blurRadius: 10,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      padding: const EdgeInsets.all(1.2),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF12111D),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Center(
+                          child: Icon(
+                            Icons.cloud_download_outlined,
+                            color: Color(0xFFD8B4FE),
+                            size: 20,
                           ),
                         ),
-                      ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Text(
+                      'Media Downloader',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                        letterSpacing: -0.2,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 16),
+                  child: Tooltip(
+                    message: 'Abrir terminal de depuración (Talker)',
+                    child: InkWell(
+                      onTap: _openLogs,
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(vertical: 10),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.04),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.08),
+                            width: 1,
+                          ),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.terminal_rounded,
+                              size: 15,
+                              color: Color(0xFFA855F7),
+                            ),
+                            SizedBox(width: 6),
+                            Text(
+                              'Console',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontFamily: 'monospace',
+                                color: Color(0xFFCBD5E1),
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 16),
-            ],
-          ),
+                const SizedBox(width: 16),
+              ],
+            ),
             backgroundColor: Colors.transparent,
             body: LayoutBuilder(
             builder: (context, constraints) {
@@ -587,6 +596,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           const SizedBox(height: 16),
                         ],
 
+
                         // Vista de Opciones (Responsive: 2 columnas en Desktop ancho vs 1 en compacto)
                         if (_mediaInfo != null && !_isAnalyzing) ...[
                           if (isDesktopWide)
@@ -595,7 +605,9 @@ class _HomeScreenState extends State<HomeScreen> {
                               children: [
                                 Expanded(
                                   flex: 5,
-                                  child: MediaPreviewCard(mediaInfo: _mediaInfo!),
+                                  child: MediaPreviewCard(
+                                    mediaInfo: _mediaInfo!,
+                                  ),
                                 ),
                                 const SizedBox(width: 16),
                                 Expanded(
@@ -609,7 +621,9 @@ class _HomeScreenState extends State<HomeScreen> {
                               ],
                             )
                           else ...[
-                            MediaPreviewCard(mediaInfo: _mediaInfo!),
+                            MediaPreviewCard(
+                              mediaInfo: _mediaInfo!,
+                            ),
                             const SizedBox(height: 16),
                             QualitySelectorCard(
                               mediaInfo: _mediaInfo!,

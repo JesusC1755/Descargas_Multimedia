@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -462,9 +463,12 @@ class UrlInputCard extends StatelessWidget {
   Widget _buildAnalyzeButton({
     required bool canAnalyze,
   }) {
+    final bool isButtonActive = canAnalyze || isLoading;
     final String tooltipMessage = canAnalyze
         ? 'Consultar formatos y resoluciones disponibles'
-        : 'Ingresa un enlace de video compatible para analizar';
+        : isLoading
+            ? 'Analizando metadatos del enlace...'
+            : 'Ingresa un enlace de video compatible para analizar';
 
     return Tooltip(
       message: tooltipMessage,
@@ -472,7 +476,7 @@ class UrlInputCard extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         height: 46,
         decoration: BoxDecoration(
-          gradient: canAnalyze
+          gradient: isButtonActive
               ? const LinearGradient(
                   colors: [
                     Color(0xFF9333EA),
@@ -483,17 +487,17 @@ class UrlInputCard extends StatelessWidget {
                   end: Alignment.centerRight,
                 )
               : null,
-          color: canAnalyze
+          color: isButtonActive
               ? null
               : const Color(0xFF262638).withValues(alpha: 0.5),
           borderRadius: BorderRadius.circular(12),
-          border: canAnalyze
+          border: isButtonActive
               ? Border.all(
                   color: Colors.white.withValues(alpha: 0.15),
                   width: 1.0,
                 )
               : null,
-          boxShadow: canAnalyze
+          boxShadow: isButtonActive
               ? [
                   BoxShadow(
                     color: const Color(0xFF06B6D4).withValues(alpha: 0.28),
@@ -515,14 +519,7 @@ class UrlInputCard extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   if (isLoading)
-                    const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
+                    const DualRingRadar(size: 18)
                   else
                     const Icon(
                       Icons.auto_awesome_rounded,
@@ -535,7 +532,7 @@ class UrlInputCard extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 13.5,
                       fontWeight: FontWeight.w700,
-                      color: canAnalyze
+                      color: isButtonActive
                           ? Colors.white
                           : const Color(0xFF64748B),
                       letterSpacing: 0.2,
@@ -549,4 +546,111 @@ class UrlInputCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Indicador de carga de alta precisión con doble anillo concéntrico y gradiente Sweep.
+/// Dibujado directamente en Canvas nativo (0 KB de dependencias externas).
+class DualRingRadar extends StatefulWidget {
+  final double size;
+
+  const DualRingRadar({
+    super.key,
+    this.size = 18,
+  });
+
+  @override
+  State<DualRingRadar> createState() => _DualRingRadarState();
+}
+
+class _DualRingRadarState extends State<DualRingRadar>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) {
+        return CustomPaint(
+          size: Size(widget.size, widget.size),
+          painter: _DualRingPainter(progress: _controller.value),
+        );
+      },
+    );
+  }
+}
+
+class _DualRingPainter extends CustomPainter {
+  final double progress;
+  _DualRingPainter({required this.progress});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final outerRadius = size.width / 2;
+    final innerRadius = outerRadius * 0.65;
+
+    // Anillo exterior gira a la derecha
+    final outerPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0
+      ..strokeCap = StrokeCap.round
+      ..shader = const SweepGradient(
+        colors: [Color(0x0006B6D4), Color(0xFF38BDF8), Color(0xFFC084FC)],
+      ).createShader(Rect.fromCircle(center: center, radius: outerRadius));
+
+    canvas.save();
+    canvas.translate(center.dx, center.dy);
+    canvas.rotate(progress * 2 * math.pi);
+    canvas.translate(-center.dx, -center.dy);
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: outerRadius),
+      0,
+      math.pi * 1.4,
+      false,
+      outerPaint,
+    );
+    canvas.restore();
+
+    // Anillo interior gira a la izquierda
+    final innerPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.8
+      ..strokeCap = StrokeCap.round
+      ..shader = const SweepGradient(
+        colors: [Color(0x00A855F7), Color(0xFFC084FC), Color(0xFF38BDF8)],
+      ).createShader(Rect.fromCircle(center: center, radius: innerRadius));
+
+    canvas.save();
+    canvas.translate(center.dx, center.dy);
+    canvas.rotate(-progress * 2 * math.pi * 1.4);
+    canvas.translate(-center.dx, -center.dy);
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: innerRadius),
+      0,
+      math.pi * 1.2,
+      false,
+      innerPaint,
+    );
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _DualRingPainter oldDelegate) =>
+      oldDelegate.progress != progress;
 }

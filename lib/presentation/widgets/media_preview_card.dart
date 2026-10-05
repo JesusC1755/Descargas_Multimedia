@@ -7,6 +7,7 @@ import '../../domain/models/media_info.dart';
 /// Muestra miniatura en proporción 16:9 con duración superpuesta, metadatos dinámicos
 /// del video y del autor (con insignia verificada), y las insignias tonales inferiores
 /// para calidades de video (Cian) y pistas de audio (Rosa/Magenta).
+/// Incluye borde iluminado direccional violeta neón con resplandor suave.
 class MediaPreviewCard extends StatelessWidget {
   final MediaInfo mediaInfo;
 
@@ -19,33 +20,49 @@ class MediaPreviewCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
           colors: [
-            Color(0xFF14141E),
-            Color(0xFF0F0F17),
+            const Color(0xFFC084FC).withValues(alpha: 0.60),
+            const Color(0xFF6366F1).withValues(alpha: 0.25),
+            Colors.white.withValues(alpha: 0.04),
           ],
+          stops: const [0.0, 0.45, 1.0],
         ),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.08),
-          width: 1.0,
-        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.35),
+            color: const Color(0xFF7C3AED).withValues(alpha: 0.18),
+            blurRadius: 22,
+            offset: const Offset(0, 4),
+          ),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.45),
             blurRadius: 18,
             offset: const Offset(0, 6),
           ),
         ],
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
+      padding: const EdgeInsets.all(1.2),
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFF14141E),
+              Color(0xFF0F0F17),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(16.8),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
             // Miniatura 16:9 con superposición de gradiente y chip de duración
             _buildThumbnail(context),
             const SizedBox(height: 14),
@@ -81,8 +98,9 @@ class MediaPreviewCard extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildThumbnail(BuildContext context) {
     return AspectRatio(
