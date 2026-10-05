@@ -55,9 +55,14 @@ if (-not $SkipBuild) {
     flutter build windows --release
     if ($LASTEXITCODE -ne 0) {
         Write-Host ""
-        Write-Host "[!] La compilacion fallo. Si el error menciona 'symlink support':" -ForegroundColor Red
-        Write-Host "    - Activa el Modo Desarrollador en Windows (Configuracion -> Para desarrolladores -> Modo de desarrollador)." -ForegroundColor Yellow
-        Write-Host "    - O ejecuta el script haciendo clic derecho en 'build-windows-bundle.bat' -> 'Ejecutar como administrador'." -ForegroundColor Yellow
+        Write-Host "[!] La compilacion fallo. Causas mas frecuentes:" -ForegroundColor Red
+        Write-Host "    A. Falta Visual Studio C++ (Visual Studio toolchain):" -ForegroundColor Yellow
+        Write-Host "       Flutter requiere Visual Studio (2022 o 2019) con el componente:" -ForegroundColor Gray
+        Write-Host "       'Desarrollo para el escritorio con C++' (Desktop development with C++)." -ForegroundColor Gray
+        Write-Host "       Ejecuta 'flutter doctor' en la terminal para diagnosticarlo." -ForegroundColor Cyan
+        Write-Host "    B. Si el error menciona 'symlink support':" -ForegroundColor Yellow
+        Write-Host "       - Activa el Modo Desarrollador en Windows (ms-settings:developers)." -ForegroundColor Gray
+        Write-Host "       - O ejecuta 'build-windows-bundle.bat' como Administrador." -ForegroundColor Gray
         Write-Error "Error durante 'flutter build windows --release'."
     }
 } else {
