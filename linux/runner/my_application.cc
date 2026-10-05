@@ -60,6 +60,9 @@ static void my_application_activate(GApplication* application) {
 
   // Configure window icon for Linux taskbar, dock, and window manager
   const gchar* assets_path = fl_dart_project_get_assets_path(project);
+  g_autofree gchar* exe_link = g_file_read_link("/proc/self/exe", nullptr);
+  g_autofree gchar* exe_dir = exe_link != nullptr ? g_path_get_dirname(exe_link) : nullptr;
+
   GList* icon_list = nullptr;
   const gchar* icon_filenames[] = {
       "app_icon_32.png", "app_icon_64.png", "app_icon_128.png",
@@ -69,7 +72,25 @@ static void my_application_activate(GApplication* application) {
     g_autofree gchar* icon_file = g_build_filename(
         assets_path, "assets", "icons", icon_filenames[i], nullptr);
     const gchar* resolved_path = icon_file;
+    g_autofree gchar* exe_bundle_file = nullptr;
+    g_autofree gchar* exe_assets_file = nullptr;
     g_autofree gchar* cwd_file = nullptr;
+
+    if (!g_file_test(resolved_path, G_FILE_TEST_EXISTS) && exe_dir != nullptr) {
+      exe_bundle_file = g_build_filename(
+          exe_dir, "data", "flutter_assets", "assets", "icons", icon_filenames[i], nullptr);
+      if (g_file_test(exe_bundle_file, G_FILE_TEST_EXISTS)) {
+        resolved_path = exe_bundle_file;
+      }
+    }
+
+    if (!g_file_test(resolved_path, G_FILE_TEST_EXISTS) && exe_dir != nullptr) {
+      exe_assets_file = g_build_filename(
+          exe_dir, "assets", "icons", icon_filenames[i], nullptr);
+      if (g_file_test(exe_assets_file, G_FILE_TEST_EXISTS)) {
+        resolved_path = exe_assets_file;
+      }
+    }
 
     if (!g_file_test(resolved_path, G_FILE_TEST_EXISTS)) {
       cwd_file = g_build_filename("assets", "icons", icon_filenames[i], nullptr);
@@ -101,6 +122,9 @@ static void my_application_activate(GApplication* application) {
       gtk_window_set_default_icon_from_file(fallback_icon, nullptr);
     }
   }
+
+  gtk_window_set_default_icon_name("com.example.media_downloader");
+  gtk_window_set_icon_name(window, "com.example.media_downloader");
 
   FlView* view = fl_view_new(project);
   GdkRGBA background_color;

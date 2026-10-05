@@ -126,3 +126,15 @@ if(NOT CMAKE_BUILD_TYPE MATCHES "Debug")
   install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
     COMPONENT Runtime)
 endif()
+
+# Copy application icon and desktop launcher into the bundle
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/com.example.media_downloader.desktop"
+  DESTINATION "${CMAKE_INSTALL_PREFIX}"
+  COMPONENT Runtime
+  OPTIONAL)
+
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../assets/icons/app_icon.png"
+  DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
+  COMPONENT Runtime
+  OPTIONAL)
+

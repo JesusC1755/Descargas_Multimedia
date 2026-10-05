@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Media Downloader
+Comment=Descargas de Audio y Video con yt-dlp y FFmpeg
+Exec=media_downloader %u
+Icon=media_downloader
+Terminal=false
+Categories=AudioVideo;Audio;Video;Network;
+StartupWMClass=com.example.media_downloader
+Keywords=youtube;downloader;video;audio;mp3;mp4;
