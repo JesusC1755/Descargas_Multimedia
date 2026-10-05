@@ -39,9 +39,25 @@ if (-not $SkipBuild) {
         }
     }
 
+    # Verificacion de permisos de symlinks en Windows
+    $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    $devModeReg = (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock" -Name "AllowDevelopmentWithoutDevLicense" -ErrorAction SilentlyContinue).AllowDevelopmentWithoutDevLicense
+
+    if (-not $isAdmin -and ($devModeReg -ne 1)) {
+        Write-Warning "El 'Modo Desarrollador' de Windows no parece estar habilitado."
+        Write-Host "  Flutter requiere permisos para crear enlaces simbolicos (symlinks)." -ForegroundColor Yellow
+        Write-Host "  Para activarlo: ejecuta 'start ms-settings:developers' y activa 'Modo de desarrollador'." -ForegroundColor Cyan
+        Write-Host "  O bien: ejecuta este script haciendo clic derecho -> 'Ejecutar como administrador'." -ForegroundColor Cyan
+        Write-Host ""
+    }
+
     Write-Host "[*] Compilando aplicacion Flutter para Windows (Release)..." -ForegroundColor Yellow
     flutter build windows --release
     if ($LASTEXITCODE -ne 0) {
+        Write-Host ""
+        Write-Host "[!] La compilacion fallo. Si el error menciona 'symlink support':" -ForegroundColor Red
+        Write-Host "    - Activa el Modo Desarrollador en Windows (Configuracion -> Para desarrolladores -> Modo de desarrollador)." -ForegroundColor Yellow
+        Write-Host "    - O ejecuta el script haciendo clic derecho en 'build-windows-bundle.bat' -> 'Ejecutar como administrador'." -ForegroundColor Yellow
         Write-Error "Error durante 'flutter build windows --release'."
     }
 } else {
