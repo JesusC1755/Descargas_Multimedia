@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
+
 import '../../core/logging/app_logger.dart';
 import '../../domain/models/download_progress.dart';
 import '../../domain/models/media_info.dart';
@@ -358,14 +360,76 @@ class DesktopProcessEngine implements IMediaEngine {
     return cleaned.isNotEmpty ? cleaned : rawTitle;
   }
 
-  String _sanitizeFilename(String title) {
+  @visibleForTesting
+  static String sanitizeFilename(String title, {int maxLength = 160}) {
     var safe = title.replaceAll(_emojiRegex, '');
     safe = safe.replaceAll(RegExp(r'[\\/:*?"<>|\x00-\x1F]'), '_');
     safe = safe.replaceAll(RegExp(r'\s+'), ' ').trim();
-    if (safe.length > 180) {
-      safe = safe.substring(0, 180).trim();
+    safe = safe.replaceAll(RegExp(r'[. ]+$'), '');
+    if (safe.length > maxLength) {
+      safe = safe.substring(0, maxLength).trim();
     }
     return safe.isNotEmpty ? safe : 'video';
+  }
+
+  /// Genera una etiqueta corta y limpia para el nombre de archivo (ej. [1080p], [720p], [MP3], [M4A]).
+  @visibleForTesting
+  static String getQualityTag(StreamOption option) {
+    if (option.isAudioOnly) {
+      final label = option.label
+          .replaceAll(RegExp(r'[\\/:*?"<>|\x00-\x1F\[\]]'), '')
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
+      return label.isNotEmpty ? label : option.extension.toUpperCase();
+    }
+
+    if (option.height != null && option.height! > 0) {
+      return '${option.height}p';
+    }
+
+    if (option.label.toLowerCase().contains('mejor')) {
+      return 'Mejor Calidad';
+    }
+
+    final cleanLabel = option.label
+        .replaceAll(RegExp(r'[\\/:*?"<>|\x00-\x1F\[\]]'), '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    return cleanLabel.isNotEmpty ? cleanLabel : 'Video';
+  }
+
+  /// Resuelve el nombre base del archivo asegurando que incluya la calidad/formato
+  /// y previniendo colisiones mediante sufijo incremental (1), (2), etc. si el archivo ya existe.
+  @visibleForTesting
+  static String resolveOutputBaseName({
+    required String? customTitle,
+    required StreamOption option,
+    required String downloadDir,
+  }) {
+    final qualityTag = getQualityTag(option);
+    if (customTitle == null || customTitle.trim().isEmpty) {
+      return '%(title)s [$qualityTag]';
+    }
+
+    final baseTitle = sanitizeFilename(customTitle.trim());
+    final titleWithQuality = '$baseTitle [$qualityTag]';
+    final expectedExt = option.isAudioOnly ? option.extension.toLowerCase().trim() : 'mp4';
+
+    final normalizedDir = downloadDir.endsWith(Platform.pathSeparator)
+        ? downloadDir.substring(0, downloadDir.length - 1)
+        : downloadDir;
+
+    String uniqueBaseName = titleWithQuality;
+    final targetFile = File('$normalizedDir${Platform.pathSeparator}$uniqueBaseName.$expectedExt');
+    if (targetFile.existsSync()) {
+      int counter = 1;
+      while (File('$normalizedDir${Platform.pathSeparator}$uniqueBaseName ($counter).$expectedExt').existsSync()) {
+        counter++;
+      }
+      uniqueBaseName = '$uniqueBaseName ($counter)';
+    }
+
+    return uniqueBaseName;
   }
 
   @override
@@ -386,9 +450,21 @@ class DesktopProcessEngine implements IMediaEngine {
     final bin = _getYtDlpExecutable();
     final jsArgs = _getJsRuntimeArgs();
 
-    final outputTemplate = (customTitle != null && customTitle.trim().isNotEmpty)
-        ? '${_sanitizeFilename(customTitle.trim())}.%(ext)s'
-        : '%(title)s.%(ext)s';
+    final expectedExt = option.isAudioOnly ? option.extension.toLowerCase().trim() : 'mp4';
+    final normalizedDir = downloadDir.endsWith(Platform.pathSeparator)
+        ? downloadDir.substring(0, downloadDir.length - 1)
+        : downloadDir;
+
+    final uniqueBaseName = resolveOutputBaseName(
+      customTitle: customTitle,
+      option: option,
+      downloadDir: normalizedDir,
+    );
+
+    final outputTemplate = '$uniqueBaseName.%(ext)s';
+    final expectedFinalPath = (customTitle != null && customTitle.trim().isNotEmpty)
+        ? '$normalizedDir${Platform.pathSeparator}$uniqueBaseName.$expectedExt'
+        : null;
 
     final args = <String>[
       ...jsArgs,
@@ -523,6 +599,10 @@ class DesktopProcessEngine implements IMediaEngine {
       process.exitCode.then((code) async {
         _activeProcess = null;
         if (code == 0) {
+          downloadedFilePath ??= (expectedFinalPath != null && File(expectedFinalPath).existsSync())
+              ? expectedFinalPath
+              : null;
+
           if (!option.isAudioOnly && downloadedFilePath != null && File(downloadedFilePath!).existsSync()) {
             await _ensureH264Compatibility(
               downloadedFilePath!,
@@ -536,6 +616,7 @@ class DesktopProcessEngine implements IMediaEngine {
                 status: DownloadStatus.completed,
                 percentage: 100.0,
                 currentStep: '¡Descarga Exitosa!',
+                outputFilePath: downloadedFilePath,
               ),
             );
             controller.close();
@@ -599,6 +680,7 @@ class DesktopProcessEngine implements IMediaEngine {
             status: DownloadStatus.completed,
             percentage: 100.0,
             currentStep: '¡Descarga Exitosa!',
+            outputFilePath: filePath,
           ),
         );
         controller.close();
@@ -644,6 +726,7 @@ class DesktopProcessEngine implements IMediaEngine {
             status: DownloadStatus.completed,
             percentage: 100.0,
             currentStep: '¡Descarga Exitosa! (Optimizado a H.264)',
+            outputFilePath: filePath,
           ),
         );
       } else {
@@ -658,6 +741,7 @@ class DesktopProcessEngine implements IMediaEngine {
             status: DownloadStatus.completed,
             percentage: 100.0,
             currentStep: '¡Descarga Exitosa!',
+            outputFilePath: filePath,
           ),
         );
       }
@@ -668,6 +752,7 @@ class DesktopProcessEngine implements IMediaEngine {
           status: DownloadStatus.completed,
           percentage: 100.0,
           currentStep: '¡Descarga Exitosa!',
+          outputFilePath: filePath,
         ),
       );
     } finally {
