@@ -446,78 +446,14 @@ class _HomeScreenState extends State<HomeScreen> {
         autofocus: true,
         child: AmbientMeshBackground(
           child: Scaffold(
-            appBar: AppBar(
-              backgroundColor: Colors.transparent,
-              elevation: 0,
-              toolbarHeight: 70,
-              title: const Padding(
-                padding: EdgeInsets.only(top: 16),
-                child: Text(
-                  'Media Downloader',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                    letterSpacing: -0.2,
-                  ),
-                ),
-              ),
-              actions: [
-                if (kDebugMode) ...[
-                  Padding(
-                    padding: const EdgeInsets.only(top: 16),
-                    child: Tooltip(
-                      message: 'Abrir terminal de depuración (Talker)',
-                      child: InkWell(
-                        onTap: _openLogs,
-                        borderRadius: BorderRadius.circular(8),
-                        child: Container(
-                          margin: const EdgeInsets.symmetric(vertical: 10),
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.04),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.08),
-                              width: 1,
-                            ),
-                          ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.terminal_rounded,
-                                size: 15,
-                                color: Color(0xFFA855F7),
-                              ),
-                              SizedBox(width: 6),
-                              Text(
-                                'Console',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontFamily: 'monospace',
-                                  color: Color(0xFFCBD5E1),
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                ],
-              ],
-            ),
             backgroundColor: Colors.transparent,
             body: LayoutBuilder(
-            builder: (context, constraints) {
-              final isDesktopWide = constraints.maxWidth >= 960;
+              builder: (context, constraints) {
+                final isDesktopWide = constraints.maxWidth >= 960;
 
-              return SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-                child: Center(
+                return SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 26),
+                  child: Center(
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 1040),
                     child: Column(
@@ -683,6 +619,47 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
+          if (kDebugMode) ...[
+            const SizedBox(width: 8),
+            Tooltip(
+              message: 'Abrir terminal de depuración (Talker)',
+              child: InkWell(
+                onTap: _openLogs,
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: const Color(0xFFA855F7).withValues(alpha: 0.3),
+                      width: 1.0,
+                    ),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.terminal_rounded,
+                        size: 14,
+                        color: Color(0xFFA855F7),
+                      ),
+                      SizedBox(width: 6),
+                      Text(
+                        'Logs',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontFamily: 'monospace',
+                          color: Color(0xFFE9D5FF),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );

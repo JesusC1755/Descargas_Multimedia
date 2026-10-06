@@ -25,32 +25,53 @@ static void my_application_activate(GApplication* application) {
   GtkWindow* window =
       GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(application)));
 
-  // Use a header bar when running in GNOME as this is the common style used
-  // by applications and is the setup most users will be using (e.g. Ubuntu
-  // desktop).
-  // If running on X and not using GNOME then just use a traditional title bar
-  // in case the window manager does more exotic layout, e.g. tiling.
-  // If running on Wayland assume the header bar will work (may need changing
-  // if future cases occur).
-  gboolean use_header_bar = TRUE;
-#ifdef GDK_WINDOWING_X11
-  GdkScreen* screen = gtk_window_get_screen(window);
-  if (GDK_IS_X11_SCREEN(screen)) {
-    const gchar* wm_name = gdk_x11_screen_get_window_manager_name(screen);
-    if (g_strcmp0(wm_name, "GNOME Shell") != 0) {
-      use_header_bar = FALSE;
-    }
-  }
-#endif
-  if (use_header_bar) {
-    GtkHeaderBar* header_bar = GTK_HEADER_BAR(gtk_header_bar_new());
-    gtk_widget_show(GTK_WIDGET(header_bar));
-    gtk_header_bar_set_title(header_bar, "Media Downloader");
-    gtk_header_bar_set_show_close_button(header_bar, TRUE);
-    gtk_window_set_titlebar(window, GTK_WIDGET(header_bar));
-  } else {
-    gtk_window_set_title(window, "Media Downloader");
-  }
+  // Use a modern CSD HeaderBar with custom dark styling to integrate seamlessly
+  // with the application's cyber / dark theme across all desktop environments (including Cinnamon).
+  GtkHeaderBar* header_bar = GTK_HEADER_BAR(gtk_header_bar_new());
+  gtk_widget_show(GTK_WIDGET(header_bar));
+  gtk_header_bar_set_title(header_bar, "Media Downloader");
+  gtk_header_bar_set_show_close_button(header_bar, TRUE);
+  gtk_window_set_titlebar(window, GTK_WIDGET(header_bar));
+  gtk_window_set_title(window, "Media Downloader");
+
+  // Apply custom dark cyber styling for the window headerbar and title buttons
+  GtkCssProvider* provider = gtk_css_provider_new();
+  const gchar* custom_css =
+      "headerbar, headerbar:backdrop {"
+      "  background: #090812;"
+      "  background-image: none;"
+      "  border-bottom: 1px solid rgba(56, 189, 248, 0.22);"
+      "  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.55);"
+      "  min-height: 38px;"
+      "  padding: 0 8px;"
+      "}"
+      "headerbar .title, headerbar:backdrop .title {"
+      "  color: #ffffff;"
+      "  font-weight: 700;"
+      "  font-size: 13px;"
+      "  letter-spacing: 0.4px;"
+      "}"
+      "headerbar button.titlebutton, headerbar:backdrop button.titlebutton {"
+      "  color: #94a3b8;"
+      "  background: transparent;"
+      "  border: none;"
+      "  border-radius: 6px;"
+      "  padding: 4px 6px;"
+      "}"
+      "headerbar button.titlebutton:hover {"
+      "  color: #ffffff;"
+      "  background-color: rgba(255, 255, 255, 0.08);"
+      "}"
+      "headerbar button.titlebutton.close:hover {"
+      "  color: #ffffff;"
+      "  background-color: #ef4444;"
+      "}";
+  gtk_css_provider_load_from_data(provider, custom_css, -1, nullptr);
+  gtk_style_context_add_provider_for_screen(
+      gdk_screen_get_default(),
+      GTK_STYLE_PROVIDER(provider),
+      GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+  g_object_unref(provider);
 
   gtk_window_set_default_size(window, 1280, 720);
 
