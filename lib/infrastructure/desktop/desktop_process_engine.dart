@@ -294,7 +294,7 @@ class DesktopProcessEngine implements IMediaEngine {
         isAudioOnly: true,
       ),
       StreamOption(
-        formatId: 'bestaudio',
+        formatId: 'bestaudio[acodec=opus]/bestaudio',
         label: 'Opus',
         extension: 'opus',
         isAudioOnly: true,
@@ -539,6 +539,10 @@ class DesktopProcessEngine implements IMediaEngine {
 
     if (option.isAudioOnly) {
       args.addAll([
+        // Sin -f, yt-dlp toma el mejor audio (Opus en YouTube) y luego lo recodifica.
+        // Con el selector de la opción, M4A y Opus se descargan ya en su códec.
+        '-f',
+        option.formatId,
         '-x',
         '--audio-format',
         option.extension,

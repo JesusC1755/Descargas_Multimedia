@@ -203,6 +203,8 @@ class MainActivity : FlutterActivity() {
                         addOption("-o", File(workDir, "$baseName.%(ext)s").absolutePath)
                         addOption("--newline")
                         if (isAudioOnly) {
+                            // Sin -f se baja Opus y se recodifica; con él, M4A/Opus llegan ya en su códec.
+                            if (format.isNotEmpty()) addOption("-f", format)
                             addOption("-x")
                             addOption("--audio-format", audioFormat)
                             addOption("--audio-quality", "0")
