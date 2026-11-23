@@ -16,10 +16,19 @@ class AndroidNativeEngine implements IMediaEngine {
   static const EventChannel _eventChannel = EventChannel('com.example.media_downloader/download_progress');
   static const MethodChannel _folderChannel = MethodChannel('com.example.media_downloader/folder_picker');
 
-
   /// En Android no se recodifica VP9/AV1 → H.264 (lento y costoso en batería),
   /// así que solo se ofrecen resoluciones con H.264 nativo, hasta 1080p.
   static const int maxVideoHeight = 1080;
+
+  /// Cliente de YouTube que usa yt-dlp en Android. `visionos` no exige el desafío
+  /// JavaScript que el teléfono resuelve con QuickJS: medido en un NLA-LX3, el análisis
+  /// baja de ~52 s a ~13 s con las mismas calidades. Si falla, el lado nativo reintenta
+  /// con los clientes por defecto de yt-dlp.
+  static const String defaultYoutubeClient = 'visionos';
+
+  /// Cliente en uso (`youtube:player_client=…`); null = clientes por defecto de yt-dlp.
+  /// En depuración se puede cambiar desde la UI para comparar.
+  String? youtubePlayerClient = defaultYoutubeClient;
 
   StreamSubscription? _activeSubscription;
   bool _isInit = false;
@@ -55,9 +64,15 @@ class AndroidNativeEngine implements IMediaEngine {
     talker.info('AndroidNativeEngine: Analizando URL en motor nativo: $url');
 
     try {
+      final stopwatch = Stopwatch()..start();
       final result = await _channel.invokeMapMethod<String, dynamic>('analyzeUrl', {
         'url': url,
+        'playerClient': youtubePlayerClient,
       });
+      talker.info(
+        'Análisis en Android: ${(stopwatch.elapsedMilliseconds / 1000).toStringAsFixed(1)} s '
+        '(cliente YouTube: ${youtubePlayerClient ?? 'por defecto'})',
+      );
 
       final debugLines = (result?['debug'] as List?)?.cast<String>() ?? const [];
       if (!_diagnosticsLogged && debugLines.isNotEmpty) {
@@ -119,8 +134,7 @@ class AndroidNativeEngine implements IMediaEngine {
     // yt-dlp descarga en una carpeta privada de la app y el lado nativo exporta el
     // archivo al destino (MediaStore o SAF), que resuelve también los nombres repetidos.
     final title = (customTitle == null || customTitle.trim().isEmpty) ? 'video' : customTitle.trim();
-    final baseName =
-        '${DesktopProcessEngine.sanitizeFilename(title)} [${DesktopProcessEngine.getQualityTag(option)}]';
+    final baseName = '${DesktopProcessEngine.sanitizeFilename(title)} [${DesktopProcessEngine.getQualityTag(option)}]';
 
     _activeSubscription?.cancel();
     _activeSubscription = _eventChannel.receiveBroadcastStream().listen(
@@ -172,6 +186,7 @@ class AndroidNativeEngine implements IMediaEngine {
         'audioFormat': option.extension,
         'baseName': baseName,
         'treeUri': destination.androidTreeUri,
+        'playerClient': youtubePlayerClient,
       });
     }
 
@@ -190,4 +205,3 @@ class AndroidNativeEngine implements IMediaEngine {
     _activeSubscription?.cancel();
   }
 }
-

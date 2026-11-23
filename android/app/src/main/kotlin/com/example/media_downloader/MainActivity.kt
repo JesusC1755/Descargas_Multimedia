@@ -78,6 +78,7 @@ class MainActivity : FlutterActivity() {
                 "init" -> {
                     engineScope.launch {
                         cleanStaleWorkDirs()
+                        YtDlpEngine.cleanExpiredInfo(applicationContext)
                         try {
                             YtDlpEngine.ensureInitialized(applicationContext)
                             withContext(Dispatchers.Main) { result.success(true) }
@@ -117,7 +118,17 @@ class MainActivity : FlutterActivity() {
 
                     engineScope.launch {
                         try {
-                            val analysis = YtDlpEngine.analyze(applicationContext, url)
+                            val started = System.currentTimeMillis()
+                            val playerClient = call.argument<String>("playerClient")
+                            val analysis = try {
+                                YtDlpEngine.analyze(applicationContext, url, playerClient)
+                            } catch (e: Exception) {
+                                if (playerClient == null) throw e
+                                // Respaldo: clientes por defecto de yt-dlp (más lentos en el teléfono por QuickJS).
+                                Log.w(TAG, "Análisis con cliente $playerClient falló; reintentando con los de yt-dlp: ${e.message?.take(300)}")
+                                YtDlpEngine.analyze(applicationContext, url, null)
+                            }
+                            Log.i(TAG, "Análisis yt-dlp (cliente: ${playerClient ?: "por defecto"}): ${System.currentTimeMillis() - started} ms")
                             withContext(Dispatchers.Main) {
                                 result.success(
                                     mapOf(
@@ -157,6 +168,7 @@ class MainActivity : FlutterActivity() {
         val isAudioOnly = args["isAudioOnly"] as? Boolean ?: false
         val audioFormat = args["audioFormat"] as? String ?: "mp3"
         val treeUri = args["treeUri"] as? String
+        val playerClient = args["playerClient"] as? String
 
         if (url.isEmpty()) {
             result.error("INVALID_URL", "URL vacía", null)
@@ -178,23 +190,56 @@ class MainActivity : FlutterActivity() {
                 YtDlpEngine.ensureInitialized(applicationContext)
                 YtDlpEngine.awaitPendingUpdate()
 
-                val request = YoutubeDLRequest(url).apply {
-                    addOption("-o", File(workDir, "$baseName.%(ext)s").absolutePath)
-                    addOption("--no-playlist")
-                    addOption("--newline")
-                    if (isAudioOnly) {
-                        addOption("-x")
-                        addOption("--audio-format", audioFormat)
-                        addOption("--audio-quality", "0")
+                fun buildRequest(info: File?, client: String?): YoutubeDLRequest {
+                    // Con el JSON del análisis no se repite la extracción (ni el desafío JS de YouTube).
+                    val request = if (info != null) {
+                        YoutubeDLRequest(emptyList<String>()).addOption("--load-info-json", info.absolutePath)
                     } else {
-                        if (format.isNotEmpty()) addOption("-f", format)
-                        addOption("-S", "vcodec:h264,res,acodec:aac")
-                        addOption("--merge-output-format", "mp4")
+                        YoutubeDLRequest(url).addOption("--no-playlist").also {
+                            YtDlpEngine.applyPlayerClient(it, client)
+                        }
+                    }
+                    return request.apply {
+                        addOption("-o", File(workDir, "$baseName.%(ext)s").absolutePath)
+                        addOption("--newline")
+                        if (isAudioOnly) {
+                            addOption("-x")
+                            addOption("--audio-format", audioFormat)
+                            addOption("--audio-quality", "0")
+                        } else {
+                            if (format.isNotEmpty()) addOption("-f", format)
+                            addOption("-S", "vcodec:h264,res,acodec:aac")
+                            addOption("--merge-output-format", "mp4")
+                        }
                     }
                 }
 
-                YoutubeDL.getInstance().execute(request, processId) { progress: Float, eta: Long, line: String ->
-                    YtDlpEngine.describeProgress(progress, eta, line)?.let { emit(it) }
+                fun run(info: File?, client: String?) {
+                    val started = System.currentTimeMillis()
+                    YoutubeDL.getInstance().execute(buildRequest(info, client), processId) { progress: Float, eta: Long, line: String ->
+                        YtDlpEngine.describeProgress(progress, eta, line)?.let { emit(it) }
+                    }
+                    val mode = if (info != null) "info-json" else "url"
+                    Log.i(TAG, "Descarga yt-dlp ($mode): ${System.currentTimeMillis() - started} ms")
+                }
+
+                val cachedInfo = YtDlpEngine.cachedInfoFor(applicationContext, url)
+                if (cachedInfo == null) {
+                    run(null, playerClient)
+                } else {
+                    try {
+                        run(cachedInfo, null)
+                    } catch (e: YoutubeDL.CanceledException) {
+                        throw e
+                    } catch (e: Exception) {
+                        // Enlaces caducados u otro fallo con el JSON guardado: reintentar desde la URL.
+                        Log.w(TAG, "Fallo con el análisis guardado; reintentando desde la URL: ${e.message?.take(300)}")
+                        YtDlpEngine.discardInfo(applicationContext, url)
+                        workDir.listFiles()?.forEach { it.deleteRecursively() }
+                        emit(mapOf("status" to "downloading", "progress" to 0.0, "step" to "Reintentando descarga…"))
+                        // Reintento con los clientes por defecto de yt-dlp: más lento pero más robusto.
+                        run(null, null)
+                    }
                 }
 
                 val output = findOutputFile(workDir)

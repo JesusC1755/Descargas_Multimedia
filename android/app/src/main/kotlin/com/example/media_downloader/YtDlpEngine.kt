@@ -6,6 +6,8 @@ import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.io.File
+import java.security.MessageDigest
 
 /**
  * Envoltorio de youtubedl-android: inicialización, actualización de yt-dlp,
@@ -17,6 +19,12 @@ object YtDlpEngine {
     private const val PREFS = "engine_prefs"
     private const val KEY_LAST_UPDATE = "ytdlp_last_update_ms"
     private const val UPDATE_INTERVAL_MS = 24L * 60 * 60 * 1000
+
+    /**
+     * Vigencia del JSON de análisis reutilizado al descargar. Los enlaces de YouTube
+     * caducan a las ~6 h; 3 h deja margen.
+     */
+    private const val INFO_TTL_MS = 3L * 60 * 60 * 1000
 
     private val initLock = Any()
 
@@ -68,13 +76,21 @@ object YtDlpEngine {
 
     data class AnalyzeResult(val json: String, val debug: List<String>, val warnings: List<String>)
 
-    suspend fun analyze(context: Context, url: String): AnalyzeResult {
+    /** Fuerza clientes de YouTube (`youtube:player_client=…`); null = los de yt-dlp por defecto. */
+    fun applyPlayerClient(request: YoutubeDLRequest, playerClient: String?) {
+        if (!playerClient.isNullOrBlank()) {
+            request.addOption("--extractor-args", "youtube:player_client=$playerClient")
+        }
+    }
+
+    suspend fun analyze(context: Context, url: String, playerClient: String? = null): AnalyzeResult {
         ensureInitialized(context)
         awaitPendingUpdate()
         val request = YoutubeDLRequest(url).apply {
             addOption("--dump-json")
             addOption("--no-playlist")
             addOption("-v")
+            applyPlayerClient(this, playerClient)
         }
         val response = YoutubeDL.getInstance().execute(request)
         val errLines = response.err.lines()
@@ -82,7 +98,49 @@ object YtDlpEngine {
             .filter { line -> line.startsWith("[debug] ") && diagnosticKeys.any { line.contains(it) } }
             .take(12)
         val warnings = errLines.filter { it.startsWith("WARNING:") }
+        saveInfo(context, url, response.out)
         return AnalyzeResult(response.out, debug, warnings)
+    }
+
+    // --- Caché del análisis -------------------------------------------------------------
+    // La descarga reutiliza el JSON del análisis con `--load-info-json`: así no se repite
+    // la extracción (arranque de Python + desafío JS de YouTube con QuickJS, ~35 s).
+
+    private fun infoDir(context: Context) = File(context.cacheDir, "info")
+
+    private fun infoFileFor(context: Context, url: String): File {
+        val hash = MessageDigest.getInstance("SHA-256").digest(url.toByteArray())
+            .joinToString("") { "%02x".format(it) }
+            .take(32)
+        return File(infoDir(context), "$hash.json")
+    }
+
+    private fun saveInfo(context: Context, url: String, json: String) {
+        val line = json.lineSequence().firstOrNull { it.startsWith("{") } ?: return
+        try {
+            val target = infoFileFor(context, url)
+            target.parentFile?.mkdirs()
+            val tmp = File(target.parentFile, target.name + ".tmp")
+            tmp.writeText(line)
+            if (!tmp.renameTo(target)) tmp.delete()
+        } catch (_: Exception) {
+            // Sin caché la descarga simplemente vuelve a extraer desde la URL.
+        }
+    }
+
+    /** JSON de análisis vigente para [url], o null si no existe o caducó. */
+    fun cachedInfoFor(context: Context, url: String): File? {
+        val file = infoFileFor(context, url)
+        return file.takeIf { it.isFile && System.currentTimeMillis() - it.lastModified() < INFO_TTL_MS }
+    }
+
+    fun discardInfo(context: Context, url: String) {
+        infoFileFor(context, url).delete()
+    }
+
+    fun cleanExpiredInfo(context: Context) {
+        val now = System.currentTimeMillis()
+        infoDir(context).listFiles()?.forEach { if (now - it.lastModified() >= INFO_TTL_MS) it.delete() }
     }
 
     /** Quita las líneas `[debug]` de los mensajes de error para no ensuciar la UI. */

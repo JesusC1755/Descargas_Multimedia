@@ -15,6 +15,7 @@ import '../../domain/models/download_progress.dart';
 import '../../domain/models/media_info.dart';
 import '../../domain/models/stream_option.dart';
 import '../../domain/ports/media_engine_port.dart';
+import '../../infrastructure/android/android_native_engine.dart';
 import '../../infrastructure/media_engine_factory.dart';
 import '../widgets/ambient_mesh_background.dart';
 import '../widgets/download_progress_card.dart';
@@ -47,6 +48,17 @@ class _HomeScreenState extends State<HomeScreen> {
   StreamOption? _lastSelectedOption;
 
   static const String _destinationPrefsKey = 'download_destination';
+  static const String _debugClientPrefsKey = 'debug_youtube_client';
+
+  /// Solo depuración: clientes de YouTube disponibles para comparar (null = por defecto).
+  static const Map<String?, String> _debugYoutubeClients = {
+    AndroidNativeEngine.defaultYoutubeClient: 'visionos (predeterminado de la app)',
+    'android_vr': 'android_vr',
+    null: 'Clientes por defecto de yt-dlp',
+  };
+
+  /// Valor guardado para "clientes por defecto de yt-dlp" (null no se puede distinguir de "sin guardar").
+  static const String _ytdlpDefaultClientSentinel = '__ytdlp_default__';
 
   DownloadDestination? _destination;
 
@@ -58,6 +70,52 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _checkSystemRequirements();
     _initDestination();
+    _loadDebugYoutubeClient();
+  }
+
+  String? get _youtubeClient => _engine is AndroidNativeEngine ? _engine.youtubePlayerClient : null;
+
+  Future<void> _loadDebugYoutubeClient() async {
+    if (!kDebugMode || _engine is! AndroidNativeEngine) return;
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString(_debugClientPrefsKey);
+    if (saved == _ytdlpDefaultClientSentinel) {
+      setState(() => _engine.youtubePlayerClient = null);
+    } else if (saved != null && _debugYoutubeClients.containsKey(saved)) {
+      setState(() => _engine.youtubePlayerClient = saved);
+    }
+  }
+
+  Future<void> _selectDebugYoutubeClient() async {
+    final engine = _engine;
+    if (engine is! AndroidNativeEngine) return;
+    final chosen = await showDialog<MapEntry<String?, String>>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('Cliente de YouTube (depuración)'),
+        children: [
+          for (final entry in _debugYoutubeClients.entries)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(ctx).pop(entry),
+              child: Row(
+                children: [
+                  Icon(
+                    entry.key == engine.youtubePlayerClient ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 10),
+                  Text(entry.value),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+    if (chosen == null) return;
+    setState(() => engine.youtubePlayerClient = chosen.key);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_debugClientPrefsKey, chosen.key ?? _ytdlpDefaultClientSentinel);
+    _showInfoSnackBar('Cliente de YouTube: ${chosen.value}. Vuelve a analizar para comparar.');
   }
 
   @override
@@ -470,7 +528,15 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     try {
+      final stopwatch = Stopwatch()..start();
       final info = await _engine.analyzeUrl(url);
+      if (kDebugMode && Platform.isAndroid) {
+        final heights = info.videoOptions.map((o) => o.height == null ? '?' : '${o.height}p').join(', ');
+        _showInfoSnackBar(
+          'Análisis: ${(stopwatch.elapsedMilliseconds / 1000).toStringAsFixed(1)} s · '
+          'cliente: ${_debugYoutubeClients[_youtubeClient] ?? _youtubeClient} · $heights',
+        );
+      }
       if (mounted) {
         setState(() {
           _mediaInfo = info;
@@ -739,6 +805,16 @@ class _HomeScreenState extends State<HomeScreen> {
                 label: compact ? null : 'Cambiar',
                 onTap: _selectDownloadDirectory,
               ),
+              if (kDebugMode && _engine is AndroidNativeEngine) ...[
+                const SizedBox(width: 6),
+                _buildBarButton(
+                  tooltip: 'Cliente de YouTube (depuración)',
+                  icon: Icons.science_outlined,
+                  label: compact ? null : 'Cliente',
+                  onTap: _selectDebugYoutubeClient,
+                  accent: _youtubeClient != null,
+                ),
+              ],
               if (kDebugMode) ...[
                 const SizedBox(width: 6),
                 _buildBarButton(
