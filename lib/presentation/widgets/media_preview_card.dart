@@ -271,7 +271,9 @@ class MediaPreviewCard extends StatelessWidget {
         // Insignia de calidades de video (Cian Eléctrico)
         _buildPill(
           icon: Icons.tv_rounded,
-          label: '${mediaInfo.videoOptions.length} calidades de video',
+          label: mediaInfo.videoOptions.length == 1
+              ? '1 calidad de video'
+              : '${mediaInfo.videoOptions.length} calidades de video',
           textColor: const Color(0xFF67E8F9),
           iconColor: const Color(0xFF22D3EE),
           bgColor: const Color(0xFF083344).withValues(alpha: 0.4),
@@ -281,7 +283,9 @@ class MediaPreviewCard extends StatelessWidget {
         // Insignia de pistas de audio (Rosa / Magenta Neón - Señalado con flecha)
         _buildPill(
           icon: Icons.music_note_rounded,
-          label: '${mediaInfo.audioOptions.length} pistas de audio',
+          label: mediaInfo.audioOptions.length == 1
+              ? '1 formato de audio'
+              : '${mediaInfo.audioOptions.length} formatos de audio',
           textColor: const Color(0xFFF472B6),
           iconColor: const Color(0xFFF472B6),
           bgColor: const Color(0xFF500724).withValues(alpha: 0.4),
