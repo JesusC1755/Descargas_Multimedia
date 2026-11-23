@@ -124,7 +124,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final home = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '';
     final es = Directory('$home${Platform.pathSeparator}Descargas');
-    return DownloadDestination(displayPath: es.existsSync() ? es.path : '$home${Platform.pathSeparator}Downloads');
+    return DownloadDestination(
+      displayPath: es.existsSync() ? es.path : '$home${Platform.pathSeparator}Downloads',
+    );
   }
 
   Future<void> _setDestination(DownloadDestination destination) async {
@@ -208,8 +210,7 @@ class _HomeScreenState extends State<HomeScreen> {
           if (out.isNotEmpty && Directory(out).existsSync()) return out;
         }
       } else if (Platform.isWindows) {
-        final script =
-            '[System.Reflection.Assembly]::LoadWithPartialName("System.windows.forms") | Out-Null; '
+        final script = '[System.Reflection.Assembly]::LoadWithPartialName("System.windows.forms") | Out-Null; '
             '\$dlg = New-Object System.Windows.Forms.FolderBrowserDialog; '
             '\$dlg.Description = "Seleccionar carpeta de descargas"; '
             'if(\$dlg.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK){ Write-Output \$dlg.SelectedPath }';
@@ -243,7 +244,9 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: const Color(0xFF1E1E24),
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
       builder: (ctx) {
         return StatefulBuilder(
           builder: (context, setSheetState) {
@@ -276,7 +279,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     Text(
                       'Selección de carpetas',
-                      style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold, color: Colors.white),
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
                     ),
                     const SizedBox(height: 18),
 
@@ -286,7 +292,10 @@ class _HomeScreenState extends State<HomeScreen> {
                       decoration: BoxDecoration(
                         color: Colors.white.withValues(alpha: 0.05),
                         borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.5), width: 1.2),
+                        border: Border.all(
+                          color: theme.colorScheme.primary.withValues(alpha: 0.5),
+                          width: 1.2,
+                        ),
                       ),
                       child: Row(
                         children: [
@@ -308,7 +317,10 @@ class _HomeScreenState extends State<HomeScreen> {
                                 const SizedBox(height: 2),
                                 Text(
                                   storageLabel,
-                                  style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.6)),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.white.withValues(alpha: 0.6),
+                                  ),
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
@@ -363,9 +375,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
                       ),
                       onPressed: () async {
-                        final picked = Platform.isAndroid
-                            ? await _pickAndroidFolder()
-                            : await _openNativeFolderPicker();
+                        final picked =
+                            Platform.isAndroid ? await _pickAndroidFolder() : await _openNativeFolderPicker();
                         if (picked != null) {
                           setSheetState(() => currentSelected = picked);
                           // En Android el permiso de la carpeta anterior ya se liberó: aplicar de inmediato.
@@ -398,7 +409,10 @@ class _HomeScreenState extends State<HomeScreen> {
                         Navigator.of(ctx).pop();
                         _showInfoSnackBar('Carpeta de destino: ${currentSelected.displayPath}');
                       },
-                      child: const Text('Guardar', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                      child: const Text(
+                        'Guardar',
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                      ),
                     ),
                   ],
                 ),
@@ -487,7 +501,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ],
             ),
-            action: SnackBarAction(textColor: theme.colorScheme.error, label: 'Ver Logs', onPressed: _openLogs),
+            action: SnackBarAction(
+              textColor: theme.colorScheme.error,
+              label: 'Ver Logs',
+              onPressed: _openLogs,
+            ),
           ),
         );
       }
@@ -511,27 +529,35 @@ class _HomeScreenState extends State<HomeScreen> {
 
     _downloadSub?.cancel();
     _downloadSub = _engine
-        .download(url: _mediaInfo!.url, option: option, destination: destination, customTitle: _mediaInfo!.title)
+        .download(
+      url: _mediaInfo!.url,
+      option: option,
+      destination: destination,
+      customTitle: _mediaInfo!.title,
+    )
         .listen(
-          (progress) {
-            if (mounted) {
-              setState(() {
-                _downloadProgress = progress;
-                if (progress.status == DownloadStatus.completed || progress.status == DownloadStatus.error) {
-                  _isDownloading = false;
-                }
-              });
+      (progress) {
+        if (mounted) {
+          setState(() {
+            _downloadProgress = progress;
+            if (progress.status == DownloadStatus.completed || progress.status == DownloadStatus.error) {
+              _isDownloading = false;
             }
-          },
-          onError: (err) {
-            if (mounted) {
-              setState(() {
-                _isDownloading = false;
-                _downloadProgress = DownloadProgress(status: DownloadStatus.error, errorMessage: err.toString());
-              });
-            }
-          },
-        );
+          });
+        }
+      },
+      onError: (err) {
+        if (mounted) {
+          setState(() {
+            _isDownloading = false;
+            _downloadProgress = DownloadProgress(
+              status: DownloadStatus.error,
+              errorMessage: err.toString(),
+            );
+          });
+        }
+      },
+    );
   }
 
   void _cancelDownload() {
@@ -547,7 +573,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _openLogs() {
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => TalkerScreen(talker: talker)));
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => TalkerScreen(talker: talker),
+      ),
+    );
   }
 
   @override
@@ -573,74 +603,92 @@ class _HomeScreenState extends State<HomeScreen> {
         child: AmbientMeshBackground(
           child: Scaffold(
             backgroundColor: Colors.transparent,
-            body: LayoutBuilder(
-              builder: (context, constraints) {
-                final isDesktopWide = constraints.maxWidth >= 960;
+            body: SafeArea(
+              bottom: false,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final isDesktopWide = constraints.maxWidth >= 960;
 
-                return SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 26),
-                  child: Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 1040),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          // Barra de información de ruta y acceso rápido al explorador
-                          _buildDirectoryBar(context, theme),
-                          const SizedBox(height: 16),
+                  return SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 26),
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 1040),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            // Barra de información de ruta y acceso rápido al explorador
+                            _buildDirectoryBar(context, theme),
+                            const SizedBox(height: 16),
 
-                          // Formulario de entrada de URL
-                          UrlInputCard(controller: _urlController, isLoading: _isAnalyzing, onAnalyze: _analyzeUrl),
-                          const SizedBox(height: 16),
-
-                          // Monitor de Descarga Activa / Progreso
-                          if (_downloadProgress != null) ...[
-                            DownloadProgressCard(
-                              progress: _downloadProgress!,
-                              onCancel: _cancelDownload,
-                              onOpenFolder: _openDownloadsFolder,
-                              onRetry: _lastSelectedOption != null ? () => _startDownload(_lastSelectedOption!) : null,
+                            // Formulario de entrada de URL
+                            UrlInputCard(
+                              controller: _urlController,
+                              isLoading: _isAnalyzing,
+                              onAnalyze: _analyzeUrl,
                             ),
                             const SizedBox(height: 16),
-                          ],
 
-                          // Estado de Carga Esquelética
-                          if (_isAnalyzing) ...[const MediaPreviewSkeleton(), const SizedBox(height: 16)],
-
-                          // Vista de Opciones (Responsive: 2 columnas en Desktop ancho vs 1 en compacto)
-                          if (_mediaInfo != null && !_isAnalyzing) ...[
-                            if (isDesktopWide)
-                              Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Expanded(flex: 5, child: MediaPreviewCard(mediaInfo: _mediaInfo!)),
-                                  const SizedBox(width: 16),
-                                  Expanded(
-                                    flex: 7,
-                                    child: QualitySelectorCard(
-                                      mediaInfo: _mediaInfo!,
-                                      isDownloading: _isDownloading,
-                                      onStartDownload: _startDownload,
-                                    ),
-                                  ),
-                                ],
-                              )
-                            else ...[
-                              MediaPreviewCard(mediaInfo: _mediaInfo!),
-                              const SizedBox(height: 16),
-                              QualitySelectorCard(
-                                mediaInfo: _mediaInfo!,
-                                isDownloading: _isDownloading,
-                                onStartDownload: _startDownload,
+                            // Monitor de Descarga Activa / Progreso
+                            if (_downloadProgress != null) ...[
+                              DownloadProgressCard(
+                                progress: _downloadProgress!,
+                                onCancel: _cancelDownload,
+                                onOpenFolder: _openDownloadsFolder,
+                                onRetry:
+                                    _lastSelectedOption != null ? () => _startDownload(_lastSelectedOption!) : null,
                               ),
+                              const SizedBox(height: 16),
+                            ],
+
+                            // Estado de Carga Esquelética
+                            if (_isAnalyzing) ...[
+                              const MediaPreviewSkeleton(),
+                              const SizedBox(height: 16),
+                            ],
+
+                            // Vista de Opciones (Responsive: 2 columnas en Desktop ancho vs 1 en compacto)
+                            if (_mediaInfo != null && !_isAnalyzing) ...[
+                              if (isDesktopWide)
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Expanded(
+                                      flex: 5,
+                                      child: MediaPreviewCard(
+                                        mediaInfo: _mediaInfo!,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 16),
+                                    Expanded(
+                                      flex: 7,
+                                      child: QualitySelectorCard(
+                                        mediaInfo: _mediaInfo!,
+                                        isDownloading: _isDownloading,
+                                        onStartDownload: _startDownload,
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              else ...[
+                                MediaPreviewCard(
+                                  mediaInfo: _mediaInfo!,
+                                ),
+                                const SizedBox(height: 16),
+                                QualitySelectorCard(
+                                  mediaInfo: _mediaInfo!,
+                                  isDownloading: _isDownloading,
+                                  onStartDownload: _startDownload,
+                                ),
+                              ],
                             ],
                           ],
-                        ],
+                        ),
                       ),
                     ),
-                  ),
-                );
-              },
+                  );
+                },
+              ),
             ),
           ),
         ),
@@ -648,91 +696,102 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  /// Barra de carpeta de destino. En pantallas angostas los botones pasan a ser solo
+  /// iconos para que la ruta siempre quede visible.
   Widget _buildDirectoryBar(BuildContext context, ThemeData theme) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.03),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08), width: 1.0),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.folder_outlined, size: 18, color: Color(0xFFA855F7)),
-          const SizedBox(width: 10),
-          const Text(
-            'Carpeta de destino: ',
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF94A3B8)),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 520;
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.03),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.08), width: 1.0),
           ),
-          Expanded(
-            child: Text(
-              _downloadDirectory.isNotEmpty ? _downloadDirectory : 'Determinando directorio...',
-              style: const TextStyle(fontSize: 12, color: Color(0xFFE9D5FF), fontFamily: 'monospace'),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          const SizedBox(width: 10),
-          Tooltip(
-            message: 'Seleccionar una nueva carpeta de destino',
-            child: InkWell(
-              onTap: _selectDownloadDirectory,
-              borderRadius: BorderRadius.circular(8),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.05),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.08), width: 1.0),
-                ),
-                child: const Row(
+          child: Row(
+            children: [
+              const Icon(Icons.folder_outlined, size: 18, color: Color(0xFFA855F7)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.folder_open_rounded, size: 14, color: Color(0xFFD8B4FE)),
-                    SizedBox(width: 6),
+                    const Text(
+                      'Carpeta de destino',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF94A3B8)),
+                    ),
+                    const SizedBox(height: 2),
                     Text(
-                      'Cambiar',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFFCBD5E1)),
+                      _downloadDirectory.isNotEmpty ? _downloadDirectory : 'Determinando directorio...',
+                      style: const TextStyle(fontSize: 12, color: Color(0xFFE9D5FF), fontFamily: 'monospace'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),
               ),
+              const SizedBox(width: 8),
+              _buildBarButton(
+                tooltip: 'Seleccionar una nueva carpeta de destino',
+                icon: Icons.folder_open_rounded,
+                label: compact ? null : 'Cambiar',
+                onTap: _selectDownloadDirectory,
+              ),
+              if (kDebugMode) ...[
+                const SizedBox(width: 6),
+                _buildBarButton(
+                  tooltip: 'Abrir terminal de depuración (Talker)',
+                  icon: Icons.terminal_rounded,
+                  label: compact ? null : 'Logs',
+                  onTap: _openLogs,
+                  accent: true,
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildBarButton({
+    required String tooltip,
+    required IconData icon,
+    required VoidCallback onTap,
+    String? label,
+    bool accent = false,
+  }) {
+    final accentColor = const Color(0xFFA855F7);
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: EdgeInsets.symmetric(horizontal: label == null ? 8 : 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.05),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: accent ? accentColor.withValues(alpha: 0.3) : Colors.white.withValues(alpha: 0.08),
             ),
           ),
-          if (kDebugMode) ...[
-            const SizedBox(width: 8),
-            Tooltip(
-              message: 'Abrir terminal de depuración (Talker)',
-              child: InkWell(
-                onTap: _openLogs,
-                borderRadius: BorderRadius.circular(8),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.05),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFFA855F7).withValues(alpha: 0.3), width: 1.0),
-                  ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.terminal_rounded, size: 14, color: Color(0xFFA855F7)),
-                      SizedBox(width: 6),
-                      Text(
-                        'Logs',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontFamily: 'monospace',
-                          color: Color(0xFFE9D5FF),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 16, color: accent ? accentColor : const Color(0xFFD8B4FE)),
+              if (label != null) ...[
+                const SizedBox(width: 6),
+                Text(
+                  label,
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFFCBD5E1)),
                 ),
-              ),
-            ),
-          ],
-        ],
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
