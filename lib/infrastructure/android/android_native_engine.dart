@@ -113,60 +113,22 @@ class AndroidNativeEngine implements IMediaEngine {
     required DownloadDestination destination,
     String? customTitle,
   }) {
-    final controller = StreamController<DownloadProgress>();
-
-    void emit(DownloadProgress p) {
-      if (!controller.isClosed) controller.add(p);
-    }
-
-    void finish() {
-      _activeSubscription?.cancel();
-      _activeSubscription = null;
-      if (!controller.isClosed) controller.close();
-    }
-
-    emit(const DownloadProgress(
-      status: DownloadStatus.downloading,
-      percentage: 0.0,
-      currentStep: 'Iniciando descarga en dispositivo móvil...',
-    ));
+    // Cada descarga lleva un id: el lado nativo reenvía el último estado al suscribirse,
+    // y así no se confunde con el resultado de una descarga anterior.
+    final id = '${DateTime.now().microsecondsSinceEpoch}-${url.hashCode.toUnsigned(32)}';
+    final controller = _listenTo(
+      id,
+      initial: const DownloadProgress(
+        status: DownloadStatus.downloading,
+        percentage: 0.0,
+        currentStep: 'Iniciando descarga en dispositivo móvil...',
+      ),
+    );
 
     // yt-dlp descarga en una carpeta privada de la app y el lado nativo exporta el
     // archivo al destino (MediaStore o SAF), que resuelve también los nombres repetidos.
     final title = (customTitle == null || customTitle.trim().isEmpty) ? 'video' : customTitle.trim();
     final baseName = '${DesktopProcessEngine.sanitizeFilename(title)} [${DesktopProcessEngine.getQualityTag(option)}]';
-
-    _activeSubscription?.cancel();
-    _activeSubscription = _eventChannel.receiveBroadcastStream().listen(
-      (dynamic event) {
-        if (event is! Map) return;
-        final status = switch (event['status']?.toString()) {
-          'completed' => DownloadStatus.completed,
-          'error' => DownloadStatus.error,
-          'processing' => DownloadStatus.processing,
-          _ => DownloadStatus.downloading,
-        };
-
-        emit(DownloadProgress(
-          status: status,
-          percentage: ((event['progress'] as num?)?.toDouble() ?? 0.0).clamp(0.0, 100.0),
-          speed: event['speed']?.toString(),
-          eta: event['eta']?.toString(),
-          currentStep: event['step']?.toString() ?? 'Descargando...',
-          outputFilePath: event['filePath']?.toString(),
-          outputUri: event['uri']?.toString(),
-          errorMessage: status == DownloadStatus.error ? event['error']?.toString() : null,
-        ));
-
-        if (status == DownloadStatus.completed || status == DownloadStatus.error) {
-          finish();
-        }
-      },
-      onError: (err) {
-        emit(DownloadProgress(status: DownloadStatus.error, errorMessage: err.toString()));
-        finish();
-      },
-    );
 
     Future<void> start() async {
       // Android 7–9 necesita permiso para escribir en Download/ (desde Android 10 se usa MediaStore).
@@ -179,7 +141,10 @@ class AndroidNativeEngine implements IMediaEngine {
           );
         }
       }
+      // Android 13+: notificación de progreso. Si se deniega, la descarga sigue igual.
+      await _channel.invokeMethod<bool>('ensureNotificationPermission');
       await _channel.invokeMethod('download', {
+        'id': id,
         'url': url,
         'format': option.formatId,
         'isAudioOnly': option.isAudioOnly,
@@ -192,16 +157,90 @@ class AndroidNativeEngine implements IMediaEngine {
 
     start().catchError((Object err) {
       final message = err is PlatformException ? (err.message ?? err.code) : err.toString();
-      emit(DownloadProgress(status: DownloadStatus.error, errorMessage: message));
-      finish();
+      if (!controller.isClosed) {
+        controller.add(DownloadProgress(status: DownloadStatus.error, errorMessage: message));
+        controller.close();
+      }
+      _activeSubscription?.cancel();
+      _activeSubscription = null;
     });
 
     return controller.stream;
   }
 
+  /// Si hay una descarga en curso (o un resultado que la UI no recibió, p. ej. porque la app
+  /// estaba cerrada), devuelve su progreso para volver a mostrarlo. Null si no hay ninguna.
+  Future<Stream<DownloadProgress>?> attachToActiveDownload() async {
+    try {
+      final snapshot = await _channel.invokeMapMethod<String, dynamic>('getActiveDownload');
+      final id = snapshot?['id'] as String?;
+      if (snapshot == null || id == null) return null;
+      return _listenTo(id, initial: _toProgress(snapshot)).stream;
+    } catch (e) {
+      talker.warning('No se pudo recuperar la descarga en curso: $e');
+      return null;
+    }
+  }
+
+  StreamController<DownloadProgress> _listenTo(String id, {required DownloadProgress initial}) {
+    final controller = StreamController<DownloadProgress>();
+
+    void finish() {
+      _activeSubscription?.cancel();
+      _activeSubscription = null;
+      if (!controller.isClosed) controller.close();
+    }
+
+    controller.add(initial);
+    if (_isTerminal(initial.status)) {
+      finish();
+      return controller;
+    }
+
+    _activeSubscription?.cancel();
+    _activeSubscription = _eventChannel.receiveBroadcastStream().listen(
+      (dynamic event) {
+        if (event is! Map || event['id'] != id || controller.isClosed) return;
+        final progress = _toProgress(event);
+        controller.add(progress);
+        if (_isTerminal(progress.status)) finish();
+      },
+      onError: (err) {
+        if (!controller.isClosed) {
+          controller.add(DownloadProgress(status: DownloadStatus.error, errorMessage: err.toString()));
+        }
+        finish();
+      },
+    );
+    return controller;
+  }
+
+  static bool _isTerminal(DownloadStatus s) =>
+      s == DownloadStatus.completed || s == DownloadStatus.error || s == DownloadStatus.cancelled;
+
+  static DownloadProgress _toProgress(Map<dynamic, dynamic> event) {
+    final status = switch (event['status']?.toString()) {
+      'completed' => DownloadStatus.completed,
+      'error' => DownloadStatus.error,
+      'cancelled' => DownloadStatus.cancelled,
+      'processing' => DownloadStatus.processing,
+      _ => DownloadStatus.downloading,
+    };
+    return DownloadProgress(
+      status: status,
+      percentage: ((event['progress'] as num?)?.toDouble() ?? 0.0).clamp(0.0, 100.0),
+      speed: event['speed']?.toString(),
+      eta: event['eta']?.toString(),
+      currentStep: event['step']?.toString() ?? 'Descargando...',
+      outputFilePath: event['filePath']?.toString(),
+      outputUri: event['uri']?.toString(),
+      errorMessage: status == DownloadStatus.error ? event['error']?.toString() : null,
+    );
+  }
+
+  /// Cancela en el servicio nativo; el evento "cancelled" llega por el EventChannel.
   @override
   void cancel() {
     _channel.invokeMethod('cancelDownload');
-    _activeSubscription?.cancel();
   }
 }

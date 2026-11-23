@@ -7,25 +7,25 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.util.Log
-import com.yausername.youtubedl_android.YoutubeDL
-import com.yausername.youtubedl_android.YoutubeDLRequest
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
-import java.util.UUID
 
 private const val TAG = "MediaDownloader"
 
 class MainActivity : FlutterActivity() {
-    // Ámbito único para el trabajo del motor (en la fase de servicio pasará a DownloadService).
+    // Análisis y tareas cortas del motor; las descargas corren en DownloadService.
     private val engineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val mainScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private var progressJob: Job? = null
 
     private val FOLDER_CHANNEL = "com.example.media_downloader/folder_picker"
     private val ENGINE_CHANNEL = "com.example.media_downloader/engine"
@@ -33,14 +33,10 @@ class MainActivity : FlutterActivity() {
 
     private val PICK_FOLDER_REQUEST_CODE = 8844
     private val STORAGE_PERMISSION_REQUEST_CODE = 8845
+    private val NOTIFICATION_PERMISSION_REQUEST_CODE = 8846
     private var pendingFolderResult: MethodChannel.Result? = null
     private var pendingPermissionResult: MethodChannel.Result? = null
-
-    private var downloadEventSink: EventChannel.EventSink? = null
-    private var activeProcessId: String? = null
-
-    /** Carpeta privada donde yt-dlp escribe antes de exportar al destino final. */
-    private val workRoot: File get() = File(cacheDir, "downloads")
+    private var pendingNotificationResult: MethodChannel.Result? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -62,12 +58,22 @@ class MainActivity : FlutterActivity() {
         // 2. Canal de streaming de progreso de descarga
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, PROGRESS_CHANNEL).setStreamHandler(
             object : EventChannel.StreamHandler {
+                // Reenvía a Flutter el estado que publica DownloadService (cada evento lleva su "id").
                 override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
-                    downloadEventSink = events
+                    progressJob?.cancel()
+                    progressJob = mainScope.launch {
+                        DownloadStateHolder.state.collect { snapshot ->
+                            if (snapshot != null && events != null) {
+                                events.success(snapshot.event)
+                                DownloadStateHolder.markDelivered(snapshot)
+                            }
+                        }
+                    }
                 }
 
                 override fun onCancel(arguments: Any?) {
-                    downloadEventSink = null
+                    progressJob?.cancel()
+                    progressJob = null
                 }
             }
         )
@@ -147,151 +153,78 @@ class MainActivity : FlutterActivity() {
                 }
                 "download" -> startDownload(call.arguments as? Map<*, *> ?: emptyMap<String, Any>(), result)
                 "cancelDownload" -> {
-                    activeProcessId?.let { id ->
-                        try {
-                            YoutubeDL.getInstance().destroyProcessById(id)
-                        } catch (_: Exception) {
-                        }
-                        activeProcessId = null
-                    }
+                    if (DownloadStateHolder.activeId != null) DownloadService.cancel(applicationContext)
                     result.success(true)
                 }
+                "getActiveDownload" -> result.success(DownloadStateHolder.pendingSnapshot()?.event)
+                "ensureNotificationPermission" -> ensureNotificationPermission(result)
                 else -> result.notImplemented()
             }
         }
     }
 
     private fun startDownload(args: Map<*, *>, result: MethodChannel.Result) {
+        val id = args["id"] as? String
         val url = args["url"] as? String ?: ""
-        val baseName = (args["baseName"] as? String)?.takeIf { it.isNotBlank() } ?: "video"
-        val format = args["format"] as? String ?: ""
-        val isAudioOnly = args["isAudioOnly"] as? Boolean ?: false
-        val audioFormat = args["audioFormat"] as? String ?: "mp3"
-        val treeUri = args["treeUri"] as? String
-        val playerClient = args["playerClient"] as? String
-
-        if (url.isEmpty()) {
-            result.error("INVALID_URL", "URL vacía", null)
+        if (id.isNullOrEmpty() || url.isEmpty()) {
+            result.error("INVALID_ARGS", "Faltan el id o la URL de la descarga", null)
             return
         }
-        if (activeProcessId != null) {
+        val initial = mapOf("status" to "downloading", "progress" to 0.0, "step" to "Preparando descarga…")
+        if (!DownloadStateHolder.tryBegin(id, initial)) {
             result.error("BUSY", "Ya hay una descarga en curso", null)
             return
         }
-
-        val processId = UUID.randomUUID().toString()
-        activeProcessId = processId
-        val workDir = File(workRoot, processId).apply { mkdirs() }
-        // La descarga corre en segundo plano; el resultado llega por el EventChannel.
-        result.success(true)
-
-        engineScope.launch {
-            try {
-                YtDlpEngine.ensureInitialized(applicationContext)
-                YtDlpEngine.awaitPendingUpdate()
-
-                fun buildRequest(info: File?, client: String?): YoutubeDLRequest {
-                    // Con el JSON del análisis no se repite la extracción (ni el desafío JS de YouTube).
-                    val request = if (info != null) {
-                        YoutubeDLRequest(emptyList<String>()).addOption("--load-info-json", info.absolutePath)
-                    } else {
-                        YoutubeDLRequest(url).addOption("--no-playlist").also {
-                            YtDlpEngine.applyPlayerClient(it, client)
-                        }
-                    }
-                    return request.apply {
-                        addOption("-o", File(workDir, "$baseName.%(ext)s").absolutePath)
-                        addOption("--newline")
-                        if (isAudioOnly) {
-                            // Sin -f se baja Opus y se recodifica; con él, M4A/Opus llegan ya en su códec.
-                            if (format.isNotEmpty()) addOption("-f", format)
-                            addOption("-x")
-                            addOption("--audio-format", audioFormat)
-                            addOption("--audio-quality", "0")
-                        } else {
-                            if (format.isNotEmpty()) addOption("-f", format)
-                            addOption("-S", "vcodec:h264,res,acodec:aac")
-                            addOption("--merge-output-format", "mp4")
-                        }
-                    }
-                }
-
-                fun run(info: File?, client: String?) {
-                    val started = System.currentTimeMillis()
-                    YoutubeDL.getInstance().execute(buildRequest(info, client), processId) { progress: Float, eta: Long, line: String ->
-                        YtDlpEngine.describeProgress(progress, eta, line)?.let { emit(it) }
-                    }
-                    val mode = if (info != null) "info-json" else "url"
-                    Log.i(TAG, "Descarga yt-dlp ($mode): ${System.currentTimeMillis() - started} ms")
-                }
-
-                val cachedInfo = YtDlpEngine.cachedInfoFor(applicationContext, url)
-                if (cachedInfo == null) {
-                    run(null, playerClient)
-                } else {
-                    try {
-                        run(cachedInfo, null)
-                    } catch (e: YoutubeDL.CanceledException) {
-                        throw e
-                    } catch (e: Exception) {
-                        // Enlaces caducados u otro fallo con el JSON guardado: reintentar desde la URL.
-                        Log.w(TAG, "Fallo con el análisis guardado; reintentando desde la URL: ${e.message?.take(300)}")
-                        YtDlpEngine.discardInfo(applicationContext, url)
-                        workDir.listFiles()?.forEach { it.deleteRecursively() }
-                        emit(mapOf("status" to "downloading", "progress" to 0.0, "step" to "Reintentando descarga…"))
-                        // Reintento con los clientes por defecto de yt-dlp: más lento pero más robusto.
-                        run(null, null)
-                    }
-                }
-
-                val output = findOutputFile(workDir)
-                    ?: throw IllegalStateException("yt-dlp terminó pero no se encontró el archivo descargado")
-
-                emit(
-                    mapOf(
-                        "status" to "processing",
-                        "progress" to 99.0,
-                        "step" to "Guardando en la carpeta de destino…",
-                    )
-                )
-                val exported = MediaExporter.export(applicationContext, output, treeUri)
-                Log.i(TAG, "Archivo exportado: ${exported.displayPath} (${exported.uri})")
-
-                emit(
-                    mapOf(
-                        "status" to "completed",
-                        "progress" to 100.0,
-                        "filePath" to exported.displayPath,
-                        "uri" to exported.uri.toString(),
-                        "step" to "¡Descarga Exitosa!",
-                    )
-                )
-            } catch (e: Exception) {
-                Log.w(TAG, "Descarga fallida", e)
-                emit(mapOf("status" to "error", "error" to YtDlpEngine.cleanError(e.message)))
-            } finally {
-                workDir.deleteRecursively()
-                if (activeProcessId == processId) activeProcessId = null
-            }
+        try {
+            DownloadService.start(
+                applicationContext,
+                DownloadService.Params(
+                    id = id,
+                    url = url,
+                    baseName = (args["baseName"] as? String)?.takeIf { it.isNotBlank() } ?: "video",
+                    format = args["format"] as? String ?: "",
+                    isAudioOnly = args["isAudioOnly"] as? Boolean ?: false,
+                    audioFormat = args["audioFormat"] as? String ?: "mp3",
+                    treeUri = args["treeUri"] as? String,
+                    playerClient = args["playerClient"] as? String,
+                ),
+            )
+            // La descarga corre en DownloadService; el resultado llega por el EventChannel.
+            result.success(true)
+        } catch (e: Exception) {
+            DownloadStateHolder.update(id, mapOf("status" to "error", "error" to "No se pudo iniciar la descarga: ${e.message}"))
+            result.error("START_ERROR", "No se pudo iniciar la descarga: ${e.message}", null)
         }
-    }
-
-    private fun emit(event: Map<String, Any?>) {
-        runOnUiThread { downloadEventSink?.success(event) }
-    }
-
-    /** El archivo final es el más grande que no sea temporal de yt-dlp. */
-    private fun findOutputFile(dir: File): File? {
-        val tempSuffixes = listOf(".part", ".ytdl", ".temp", ".tmp")
-        return dir.listFiles()
-            ?.filter { f -> f.isFile && tempSuffixes.none { f.name.endsWith(it) } && !f.name.contains(".part-Frag") }
-            ?.maxByOrNull { it.length() }
     }
 
     private fun cleanStaleWorkDirs() {
-        workRoot.listFiles()?.forEach { dir ->
-            if (dir.name != activeProcessId) dir.deleteRecursively()
+        val active = DownloadStateHolder.activeId
+        DownloadService.workRoot(applicationContext).listFiles()?.forEach { dir ->
+            if (dir.name != active) dir.deleteRecursively()
         }
+    }
+
+    /** Android 13+: permiso para mostrar la notificación de progreso. Sin él la descarga funciona igual. */
+    private fun ensureNotificationPermission(result: MethodChannel.Result) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        ) {
+            result.success(true)
+            return
+        }
+        if (pendingNotificationResult != null) {
+            result.success(false)
+            return
+        }
+        pendingNotificationResult = result
+        requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), NOTIFICATION_PERMISSION_REQUEST_CODE)
+    }
+
+    override fun onDestroy() {
+        progressJob?.cancel()
+        mainScope.cancel()
+        engineScope.cancel()
+        super.onDestroy()
     }
 
     private fun pickFolder(result: MethodChannel.Result) {
@@ -331,10 +264,16 @@ class MainActivity : FlutterActivity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == STORAGE_PERMISSION_REQUEST_CODE) {
-            val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
-            pendingPermissionResult?.success(granted)
-            pendingPermissionResult = null
+        val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
+        when (requestCode) {
+            STORAGE_PERMISSION_REQUEST_CODE -> {
+                pendingPermissionResult?.success(granted)
+                pendingPermissionResult = null
+            }
+            NOTIFICATION_PERMISSION_REQUEST_CODE -> {
+                pendingNotificationResult?.success(granted)
+                pendingNotificationResult = null
+            }
         }
     }
 
