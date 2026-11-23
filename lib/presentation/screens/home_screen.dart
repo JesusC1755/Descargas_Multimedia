@@ -47,8 +47,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   String _downloadDirectory = '';
 
-
-
   @override
   void initState() {
     super.initState();
@@ -82,10 +80,7 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (_) {}
 
     if (Platform.isAndroid) {
-      final androidCandidates = [
-        Directory('/storage/emulated/0/Download'),
-        Directory('/storage/emulated/0/Downloads'),
-      ];
+      final androidCandidates = [Directory('/storage/emulated/0/Download'), Directory('/storage/emulated/0/Downloads')];
       for (final d in androidCandidates) {
         if (d.existsSync()) {
           if (mounted) setState(() => _downloadDirectory = d.path);
@@ -183,9 +178,7 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: const Color(0xFF1E1E24),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (ctx) {
         return StatefulBuilder(
           builder: (context, setSheetState) {
@@ -217,10 +210,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     Text(
                       'Selección de carpetas',
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
+                      style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold, color: Colors.white),
                     ),
                     const SizedBox(height: 18),
 
@@ -230,10 +220,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       decoration: BoxDecoration(
                         color: Colors.white.withValues(alpha: 0.05),
                         borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: theme.colorScheme.primary.withValues(alpha: 0.5),
-                          width: 1.2,
-                        ),
+                        border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.5), width: 1.2),
                       ),
                       child: Row(
                         children: [
@@ -255,10 +242,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 const SizedBox(height: 2),
                                 Text(
                                   storageLabel,
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.white.withValues(alpha: 0.6),
-                                  ),
+                                  style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.6)),
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
@@ -343,10 +327,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         );
                       },
-                      child: const Text(
-                        'Guardar',
-                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-                      ),
+                      child: const Text('Guardar', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
                     ),
                   ],
                 ),
@@ -435,11 +416,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ],
             ),
-            action: SnackBarAction(
-              textColor: theme.colorScheme.error,
-              label: 'Ver Logs',
-              onPressed: _openLogs,
-            ),
+            action: SnackBarAction(textColor: theme.colorScheme.error, label: 'Ver Logs', onPressed: _openLogs),
           ),
         );
       }
@@ -462,19 +439,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
     _downloadSub?.cancel();
     _downloadSub = _engine
-        .download(
-          url: _mediaInfo!.url,
-          option: option,
-          downloadDir: _downloadDirectory,
-          customTitle: _mediaInfo!.title,
-        )
+        .download(url: _mediaInfo!.url, option: option, downloadDir: _downloadDirectory, customTitle: _mediaInfo!.title)
         .listen(
           (progress) {
             if (mounted) {
               setState(() {
                 _downloadProgress = progress;
-                if (progress.status == DownloadStatus.completed ||
-                    progress.status == DownloadStatus.error) {
+                if (progress.status == DownloadStatus.completed || progress.status == DownloadStatus.error) {
                   _isDownloading = false;
                 }
               });
@@ -484,10 +455,7 @@ class _HomeScreenState extends State<HomeScreen> {
             if (mounted) {
               setState(() {
                 _isDownloading = false;
-                _downloadProgress = DownloadProgress(
-                  status: DownloadStatus.error,
-                  errorMessage: err.toString(),
-                );
+                _downloadProgress = DownloadProgress(status: DownloadStatus.error, errorMessage: err.toString());
               });
             }
           },
@@ -507,13 +475,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _openLogs() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => TalkerScreen(talker: talker),
-      ),
-    );
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => TalkerScreen(talker: talker)));
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -545,94 +508,73 @@ class _HomeScreenState extends State<HomeScreen> {
                 return SingleChildScrollView(
                   padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 26),
                   child: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 1040),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-
-                        // Barra de información de ruta y acceso rápido al explorador
-                        _buildDirectoryBar(context, theme),
-                        const SizedBox(height: 16),
-
-                        // Formulario de entrada de URL
-                        UrlInputCard(
-                          controller: _urlController,
-                          isLoading: _isAnalyzing,
-                          onAnalyze: _analyzeUrl,
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Monitor de Descarga Activa / Progreso
-                        if (_downloadProgress != null) ...[
-                          DownloadProgressCard(
-                            progress: _downloadProgress!,
-                            onCancel: _cancelDownload,
-                            onOpenFolder: _openDownloadsFolder,
-                            onRetry: _lastSelectedOption != null
-                                ? () => _startDownload(_lastSelectedOption!)
-                                : null,
-                          ),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 1040),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          // Barra de información de ruta y acceso rápido al explorador
+                          _buildDirectoryBar(context, theme),
                           const SizedBox(height: 16),
-                        ],
 
-                        // Estado de Carga Esquelética
-                        if (_isAnalyzing) ...[
-                          const MediaPreviewSkeleton(),
+                          // Formulario de entrada de URL
+                          UrlInputCard(controller: _urlController, isLoading: _isAnalyzing, onAnalyze: _analyzeUrl),
                           const SizedBox(height: 16),
-                        ],
 
-
-                        // Vista de Opciones (Responsive: 2 columnas en Desktop ancho vs 1 en compacto)
-                        if (_mediaInfo != null && !_isAnalyzing) ...[
-                          if (isDesktopWide)
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Expanded(
-                                  flex: 5,
-                                  child: MediaPreviewCard(
-                                    mediaInfo: _mediaInfo!,
-                                  ),
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  flex: 7,
-                                  child: QualitySelectorCard(
-                                    mediaInfo: _mediaInfo!,
-                                    isDownloading: _isDownloading,
-                                    onStartDownload: _startDownload,
-                                  ),
-                                ),
-                              ],
-                            )
-                          else ...[
-                            MediaPreviewCard(
-                              mediaInfo: _mediaInfo!,
+                          // Monitor de Descarga Activa / Progreso
+                          if (_downloadProgress != null) ...[
+                            DownloadProgressCard(
+                              progress: _downloadProgress!,
+                              onCancel: _cancelDownload,
+                              onOpenFolder: _openDownloadsFolder,
+                              onRetry: _lastSelectedOption != null ? () => _startDownload(_lastSelectedOption!) : null,
                             ),
                             const SizedBox(height: 16),
-                            QualitySelectorCard(
-                              mediaInfo: _mediaInfo!,
-                              isDownloading: _isDownloading,
-                              onStartDownload: _startDownload,
-                            ),
+                          ],
+
+                          // Estado de Carga Esquelética
+                          if (_isAnalyzing) ...[const MediaPreviewSkeleton(), const SizedBox(height: 16)],
+
+                          // Vista de Opciones (Responsive: 2 columnas en Desktop ancho vs 1 en compacto)
+                          if (_mediaInfo != null && !_isAnalyzing) ...[
+                            if (isDesktopWide)
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(flex: 5, child: MediaPreviewCard(mediaInfo: _mediaInfo!)),
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    flex: 7,
+                                    child: QualitySelectorCard(
+                                      mediaInfo: _mediaInfo!,
+                                      isDownloading: _isDownloading,
+                                      onStartDownload: _startDownload,
+                                    ),
+                                  ),
+                                ],
+                              )
+                            else ...[
+                              MediaPreviewCard(mediaInfo: _mediaInfo!),
+                              const SizedBox(height: 16),
+                              QualitySelectorCard(
+                                mediaInfo: _mediaInfo!,
+                                isDownloading: _isDownloading,
+                                onStartDownload: _startDownload,
+                              ),
+                            ],
                           ],
                         ],
-
-
-                      ],
+                      ),
                     ),
                   ),
-                ),
-              );
-            },
+                );
+              },
+            ),
           ),
         ),
       ),
-    ),
-  );
-}
-
+    );
+  }
 
   Widget _buildDirectoryBar(BuildContext context, ThemeData theme) {
     return Container(
@@ -640,35 +582,20 @@ class _HomeScreenState extends State<HomeScreen> {
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.03),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.08),
-          width: 1.0,
-        ),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08), width: 1.0),
       ),
       child: Row(
         children: [
-          const Icon(
-            Icons.folder_outlined,
-            size: 18,
-            color: Color(0xFFA855F7),
-          ),
+          const Icon(Icons.folder_outlined, size: 18, color: Color(0xFFA855F7)),
           const SizedBox(width: 10),
           const Text(
             'Carpeta de destino: ',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF94A3B8),
-            ),
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF94A3B8)),
           ),
           Expanded(
             child: Text(
               _downloadDirectory.isNotEmpty ? _downloadDirectory : 'Determinando directorio...',
-              style: const TextStyle(
-                fontSize: 12,
-                color: Color(0xFFE9D5FF),
-                fontFamily: 'monospace',
-              ),
+              style: const TextStyle(fontSize: 12, color: Color(0xFFE9D5FF), fontFamily: 'monospace'),
               overflow: TextOverflow.ellipsis,
             ),
           ),
@@ -683,27 +610,16 @@ class _HomeScreenState extends State<HomeScreen> {
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.05),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.08),
-                    width: 1.0,
-                  ),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.08), width: 1.0),
                 ),
                 child: const Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(
-                      Icons.folder_open_rounded,
-                      size: 14,
-                      color: Color(0xFFD8B4FE),
-                    ),
+                    Icon(Icons.folder_open_rounded, size: 14, color: Color(0xFFD8B4FE)),
                     SizedBox(width: 6),
                     Text(
                       'Cambiar',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFFCBD5E1),
-                      ),
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFFCBD5E1)),
                     ),
                   ],
                 ),
@@ -722,19 +638,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   decoration: BoxDecoration(
                     color: Colors.white.withValues(alpha: 0.05),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: const Color(0xFFA855F7).withValues(alpha: 0.3),
-                      width: 1.0,
-                    ),
+                    border: Border.all(color: const Color(0xFFA855F7).withValues(alpha: 0.3), width: 1.0),
                   ),
                   child: const Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(
-                        Icons.terminal_rounded,
-                        size: 14,
-                        color: Color(0xFFA855F7),
-                      ),
+                      Icon(Icons.terminal_rounded, size: 14, color: Color(0xFFA855F7)),
                       SizedBox(width: 6),
                       Text(
                         'Logs',
@@ -756,4 +665,3 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 }
-
