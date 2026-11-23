@@ -38,6 +38,8 @@ class DesktopProcessEngine implements IMediaEngine {
 
   static final RegExp emojiRegex = _emojiRegex;
 
+  static const String _progressMarker = '[PROGRESS]';
+
   String _resolveToolExecutable(String baseName) {
     final isWin = Platform.isWindows;
     final exeName = isWin ? '$baseName.exe' : baseName;
@@ -521,8 +523,11 @@ class DesktopProcessEngine implements IMediaEngine {
       'title',
       r'[\U0001F300-\U0001FAFF\U00002600-\U000027BF\U00002300-\U000023FF\U00002B50-\U00002B55]',
       '',
+      // --print implica --quiet, que oculta el progreso; --progress lo vuelve a mostrar.
+      '--progress',
+      // "download:" es el TIPO de plantilla (no se imprime); "[PROGRESS]" es el marcador que se parsea.
       '--progress-template',
-      'download:%(progress._percent_str)s|%(progress._speed_str)s|%(progress._eta_str)s|%(progress._total_bytes_str)s',
+      'download:$_progressMarker%(progress._percent_str)s|%(progress._speed_str)s|%(progress._eta_str)s|%(progress._total_bytes_str)s',
       '-P',
       downloadDir,
       '-o',
@@ -569,8 +574,8 @@ class DesktopProcessEngine implements IMediaEngine {
           .transform(utf8.decoder)
           .transform(const LineSplitter())
           .listen((line) {
-        if (line.startsWith('download:')) {
-          final parts = line.substring(9).split('|');
+        if (line.startsWith(_progressMarker)) {
+          final parts = line.substring(_progressMarker.length).split('|');
           if (parts.isNotEmpty) {
             final rawPercent = parts[0].replaceAll('%', '').trim();
             final percent = double.tryParse(rawPercent) ?? currentProgress.percentage;
