@@ -5,15 +5,16 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:talker_flutter/talker_flutter.dart';
 
 import '../../core/logging/app_logger.dart';
 import '../../core/utils/media_url_validator.dart';
+import '../../domain/models/download_destination.dart';
 import '../../domain/models/download_progress.dart';
 import '../../domain/models/media_info.dart';
 import '../../domain/models/stream_option.dart';
 import '../../domain/ports/media_engine_port.dart';
-import '../../infrastructure/desktop/desktop_process_engine.dart';
 import '../../infrastructure/media_engine_factory.dart';
 import '../widgets/ambient_mesh_background.dart';
 import '../widgets/download_progress_card.dart';
@@ -45,13 +46,18 @@ class _HomeScreenState extends State<HomeScreen> {
   StreamSubscription<DownloadProgress>? _downloadSub;
   StreamOption? _lastSelectedOption;
 
-  String _downloadDirectory = '';
+  static const String _destinationPrefsKey = 'download_destination';
+
+  DownloadDestination? _destination;
+
+  /// Ruta visible de la carpeta de destino (vacía mientras se determina).
+  String get _downloadDirectory => _destination?.displayPath ?? '';
 
   @override
   void initState() {
     super.initState();
     _checkSystemRequirements();
-    _initDownloadDirectory();
+    _initDestination();
   }
 
   @override
@@ -69,35 +75,75 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!ffmpeg) talker.warning('FFmpeg no fue detectado en las rutas del sistema.');
   }
 
-  Future<void> _initDownloadDirectory() async {
-    try {
-      final dir = await getDownloadsDirectory();
-      if (dir != null && mounted) {
-        setState(() => _downloadDirectory = dir.path);
-        talker.info('Carpeta de descargas detectada: ${dir.path}');
+  /// Carga la carpeta guardada; si ya no es accesible vuelve a la predeterminada.
+  Future<void> _initDestination() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = DownloadDestination.fromJson(prefs.getString(_destinationPrefsKey));
+
+    if (saved != null) {
+      if (await _isDestinationAccessible(saved)) {
+        if (mounted) setState(() => _destination = saved);
+        talker.info('Carpeta de destino restaurada: ${saved.displayPath}');
         return;
       }
+      talker.warning('Sin acceso a la carpeta guardada (${saved.displayPath}); se usará la predeterminada.');
+      await prefs.remove(_destinationPrefsKey);
+      _showInfoSnackBar('Ya no hay acceso a "${saved.displayPath}". Se usará la carpeta Descargas.');
+    }
+
+    final fallback = await _defaultDestination();
+    if (mounted) setState(() => _destination = fallback);
+    talker.info('Carpeta de destino predeterminada: ${fallback.displayPath}');
+  }
+
+  Future<bool> _isDestinationAccessible(DownloadDestination d) async {
+    try {
+      if (Platform.isAndroid) {
+        if (d.androidTreeUri == null) return true;
+        return await _folderChannel.invokeMethod<bool>('checkTreeAccess', {'uri': d.androidTreeUri}) ?? false;
+      }
+      return Directory(d.displayPath).existsSync();
+    } catch (e) {
+      talker.warning('No se pudo verificar la carpeta de destino: $e');
+      return false;
+    }
+  }
+
+  Future<DownloadDestination> _defaultDestination() async {
+    if (Platform.isAndroid) {
+      // path_provider devuelve en Android una carpeta privada de la app (Android/data/…),
+      // invisible para la galería; la predeterminada real es Download/ vía MediaStore.
+      final path = await _folderChannel.invokeMethod<String>('getDefaultDestination');
+      return DownloadDestination(displayPath: path ?? '/storage/emulated/0/Download');
+    }
+
+    try {
+      final dir = await getDownloadsDirectory();
+      if (dir != null) return DownloadDestination(displayPath: dir.path);
     } catch (_) {}
 
-    if (Platform.isAndroid) {
-      final androidCandidates = [Directory('/storage/emulated/0/Download'), Directory('/storage/emulated/0/Downloads')];
-      for (final d in androidCandidates) {
-        if (d.existsSync()) {
-          if (mounted) setState(() => _downloadDirectory = d.path);
-          talker.info('Carpeta de descargas detectada en Android: ${d.path}');
-          return;
-        }
-      }
-    }
+    final home = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '';
+    final es = Directory('$home${Platform.pathSeparator}Descargas');
+    return DownloadDestination(displayPath: es.existsSync() ? es.path : '$home${Platform.pathSeparator}Downloads');
+  }
 
-    final home = Platform.environment['HOME'] ?? '';
-    final defaultDir = Directory('$home/Descargas');
-    if (await defaultDir.exists()) {
-      if (mounted) setState(() => _downloadDirectory = defaultDir.path);
-    } else {
-      if (mounted) setState(() => _downloadDirectory = '$home/Downloads');
-    }
-    talker.info('Carpeta de descargas fallback: $_downloadDirectory');
+  Future<void> _setDestination(DownloadDestination destination) async {
+    setState(() => _destination = destination);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_destinationPrefsKey, destination.toJson());
+    talker.info('Carpeta de destino guardada: ${destination.displayPath}');
+  }
+
+  void _showInfoSnackBar(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 3),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
   }
 
   Future<void> _openDownloadsFolder() async {
@@ -128,12 +174,29 @@ class _HomeScreenState extends State<HomeScreen> {
 
   static const MethodChannel _folderChannel = MethodChannel('com.example.media_downloader/folder_picker');
 
-  Future<String?> _openNativeFolderPicker() async {
+  Future<DownloadDestination?> _openNativeFolderPicker() async {
+    final path = await _pickDesktopFolderPath();
+    return path == null ? null : DownloadDestination(displayPath: path);
+  }
+
+  /// Android: carpeta elegida con SAF. Se guarda el URI (con permiso persistente) para
+  /// escribir con DocumentsContract; la ruta solo se muestra.
+  Future<DownloadDestination?> _pickAndroidFolder() async {
     try {
-      if (Platform.isAndroid) {
-        final path = await _folderChannel.invokeMethod<String>('pickFolder');
-        return path;
-      } else if (Platform.isLinux) {
+      final picked = await _folderChannel.invokeMapMethod<String, dynamic>('pickFolder');
+      final uri = picked?['uri'] as String?;
+      if (uri == null) return null;
+      return DownloadDestination(displayPath: picked?['path'] as String? ?? uri, androidTreeUri: uri);
+    } on PlatformException catch (e) {
+      talker.warning('Error en selector de carpetas de Android: ${e.message}');
+      _showInfoSnackBar(e.message ?? 'No se pudo seleccionar la carpeta.');
+      return null;
+    }
+  }
+
+  Future<String?> _pickDesktopFolderPath() async {
+    try {
+      if (Platform.isLinux) {
         final result = await Process.run('zenity', [
           '--file-selection',
           '--directory',
@@ -172,7 +235,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _selectDownloadDirectory() async {
-    String currentSelected = _downloadDirectory;
+    final initial = _destination;
+    if (initial == null) return;
+    DownloadDestination currentSelected = initial;
 
     await showModalBottomSheet<void>(
       context: context,
@@ -183,12 +248,13 @@ class _HomeScreenState extends State<HomeScreen> {
         return StatefulBuilder(
           builder: (context, setSheetState) {
             final theme = Theme.of(context);
-            final folderName = currentSelected.isNotEmpty
-                ? currentSelected.split(Platform.pathSeparator).last
+            final selectedPath = currentSelected.displayPath;
+            final folderName = selectedPath.isNotEmpty
+                ? selectedPath.split(Platform.pathSeparator).where((p) => p.isNotEmpty).lastOrNull ?? selectedPath
                 : 'Descargas';
-            final storageLabel = currentSelected.contains('/storage/emulated/0')
+            final storageLabel = selectedPath.contains('/storage/emulated/0')
                 ? 'Almacenamiento interno'
-                : (currentSelected.contains('/storage/') ? 'Tarjeta de memoria' : 'Almacenamiento local');
+                : (selectedPath.contains('/storage/') ? 'Tarjeta de memoria' : 'Almacenamiento local');
 
             return SafeArea(
               child: Padding(
@@ -246,7 +312,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
-                                  currentSelected,
+                                  selectedPath,
                                   style: TextStyle(
                                     fontSize: 11,
                                     fontFamily: 'monospace',
@@ -297,16 +363,28 @@ class _HomeScreenState extends State<HomeScreen> {
                         style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
                       ),
                       onPressed: () async {
-                        final picked = await _openNativeFolderPicker();
-                        if (picked != null && picked.isNotEmpty) {
+                        final picked = Platform.isAndroid
+                            ? await _pickAndroidFolder()
+                            : await _openNativeFolderPicker();
+                        if (picked != null) {
                           setSheetState(() => currentSelected = picked);
-                          if (mounted) {
-                            setState(() => _downloadDirectory = picked);
-                          }
-                          talker.info('Carpeta seleccionada desde explorador nativo: $picked');
+                          // En Android el permiso de la carpeta anterior ya se liberó: aplicar de inmediato.
+                          if (mounted) await _setDestination(picked);
                         }
                       },
                     ),
+                    if (Platform.isAndroid && !currentSelected.isAndroidDefault) ...[
+                      const SizedBox(height: 4),
+                      TextButton.icon(
+                        icon: const Icon(Icons.restore_rounded, size: 18),
+                        label: const Text('Usar la carpeta predeterminada (Descargas)'),
+                        onPressed: () async {
+                          final fallback = await _defaultDestination();
+                          setSheetState(() => currentSelected = fallback);
+                          if (mounted) await _setDestination(fallback);
+                        },
+                      ),
+                    ],
                     const SizedBox(height: 12),
 
                     // Botón Guardar
@@ -316,16 +394,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                       ),
                       onPressed: () {
-                        setState(() => _downloadDirectory = currentSelected);
+                        _setDestination(currentSelected);
                         Navigator.of(ctx).pop();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('Carpeta de destino: $currentSelected'),
-                            behavior: SnackBarBehavior.floating,
-                            duration: const Duration(seconds: 2),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                          ),
-                        );
+                        _showInfoSnackBar('Carpeta de destino: ${currentSelected.displayPath}');
                       },
                       child: const Text('Guardar', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
                     ),
@@ -424,7 +495,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _startDownload(StreamOption option) {
-    if (_mediaInfo == null || _downloadDirectory.isEmpty) return;
+    final destination = _destination;
+    if (_mediaInfo == null || destination == null) return;
 
     _lastSelectedOption = option;
 
@@ -439,7 +511,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     _downloadSub?.cancel();
     _downloadSub = _engine
-        .download(url: _mediaInfo!.url, option: option, downloadDir: _downloadDirectory, customTitle: _mediaInfo!.title)
+        .download(url: _mediaInfo!.url, option: option, destination: destination, customTitle: _mediaInfo!.title)
         .listen(
           (progress) {
             if (mounted) {

@@ -1,10 +1,11 @@
 package com.example.media_downloader
 
+import android.Manifest
 import android.app.Activity
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
-import android.os.Environment
-import android.provider.DocumentsContract
+import android.os.Build
 import android.util.Log
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
@@ -31,35 +32,30 @@ class MainActivity : FlutterActivity() {
     private val PROGRESS_CHANNEL = "com.example.media_downloader/download_progress"
 
     private val PICK_FOLDER_REQUEST_CODE = 8844
+    private val STORAGE_PERMISSION_REQUEST_CODE = 8845
     private var pendingFolderResult: MethodChannel.Result? = null
+    private var pendingPermissionResult: MethodChannel.Result? = null
 
     private var downloadEventSink: EventChannel.EventSink? = null
     private var activeProcessId: String? = null
 
+    /** Carpeta privada donde yt-dlp escribe antes de exportar al destino final. */
+    private val workRoot: File get() = File(cacheDir, "downloads")
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
-        // 1. Canal de selección de carpetas nativas
+        // 1. Canal de carpetas de destino (SAF)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, FOLDER_CHANNEL).setMethodCallHandler { call, result ->
-            if (call.method == "pickFolder") {
-                if (pendingFolderResult != null) {
-                    result.error("ALREADY_ACTIVE", "Un selector ya está activo", null)
-                    return@setMethodCallHandler
+            when (call.method) {
+                "pickFolder" -> pickFolder(result)
+                "getDefaultDestination" -> result.success(MediaExporter.defaultDisplayPath)
+                "checkTreeAccess" -> {
+                    val uri = call.argument<String>("uri")
+                    result.success(uri != null && MediaExporter.hasTreeAccess(applicationContext, uri))
                 }
-                pendingFolderResult = result
-                try {
-                    val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
-                        flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                                Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
-                                Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
-                    }
-                    startActivityForResult(intent, PICK_FOLDER_REQUEST_CODE)
-                } catch (e: Exception) {
-                    pendingFolderResult?.error("INTENT_ERROR", e.message, null)
-                    pendingFolderResult = null
-                }
-            } else {
-                result.notImplemented()
+                "ensureStoragePermission" -> ensureStoragePermission(result)
+                else -> result.notImplemented()
             }
         }
 
@@ -81,6 +77,7 @@ class MainActivity : FlutterActivity() {
             when (call.method) {
                 "init" -> {
                     engineScope.launch {
+                        cleanStaleWorkDirs()
                         try {
                             YtDlpEngine.ensureInitialized(applicationContext)
                             withContext(Dispatchers.Main) { result.success(true) }
@@ -137,80 +134,13 @@ class MainActivity : FlutterActivity() {
                         }
                     }
                 }
-                "download" -> {
-                    val url = call.argument<String>("url") ?: ""
-                    val outputPath = call.argument<String>("outputPath") ?: ""
-                    val format = call.argument<String>("format") ?: ""
-                    val isAudioOnly = call.argument<Boolean>("isAudioOnly") ?: false
-                    val audioFormat = call.argument<String>("audioFormat") ?: "mp3"
-                    val expectedFinalPath = call.argument<String>("expectedFinalPath") ?: outputPath
-
-                    val processId = UUID.randomUUID().toString()
-                    activeProcessId = processId
-
-                    engineScope.launch {
-                        try {
-                            YtDlpEngine.ensureInitialized(applicationContext)
-                            YtDlpEngine.awaitPendingUpdate()
-
-                            val request = YoutubeDLRequest(url).apply {
-                                addOption("-o", outputPath)
-                                addOption("--no-playlist")
-                                addOption("--newline")
-                                if (isAudioOnly) {
-                                    addOption("-x")
-                                    addOption("--audio-format", audioFormat)
-                                    addOption("--audio-quality", "0")
-                                } else {
-                                    if (format.isNotEmpty()) addOption("-f", format)
-                                    addOption("-S", "vcodec:h264,res,acodec:aac")
-                                    addOption("--merge-output-format", "mp4")
-                                }
-                            }
-
-                            YoutubeDL.getInstance().execute(
-                                request = request,
-                                processId = processId,
-                                callback = { progress: Float, etaInSeconds: Long, line: String ->
-                                    val event = YtDlpEngine.describeProgress(progress, etaInSeconds, line)
-                                    if (event != null) {
-                                        runOnUiThread { downloadEventSink?.success(event) }
-                                    }
-                                }
-                            )
-
-                            withContext(Dispatchers.Main) {
-                                val completedEvent = mapOf(
-                                    "status" to "completed",
-                                    "progress" to 100.0,
-                                    "filePath" to expectedFinalPath,
-                                    "step" to "Descarga completada"
-                                )
-                                downloadEventSink?.success(completedEvent)
-                                result.success(true)
-                            }
-                        } catch (e: Exception) {
-                            withContext(Dispatchers.Main) {
-                                val message = YtDlpEngine.cleanError(e.message)
-                                val errorEvent = mapOf(
-                                    "status" to "error",
-                                    "error" to message
-                                )
-                                downloadEventSink?.success(errorEvent)
-                                result.error("DOWNLOAD_ERROR", message, null)
-                            }
-                        } finally {
-                            if (activeProcessId == processId) {
-                                activeProcessId = null
-                            }
-                        }
-                    }
-                }
+                "download" -> startDownload(call.arguments as? Map<*, *> ?: emptyMap<String, Any>(), result)
                 "cancelDownload" -> {
                     activeProcessId?.let { id ->
                         try {
                             YoutubeDL.getInstance().destroyProcessById(id)
-                        } catch (_: Exception) {}
+                        } catch (_: Exception) {
+                        }
                         activeProcessId = null
                     }
                     result.success(true)
@@ -220,58 +150,168 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == PICK_FOLDER_REQUEST_CODE) {
-            if (resultCode == Activity.RESULT_OK && data != null) {
-                val uri: Uri? = data.data
-                if (uri != null) {
-                    try {
-                        contentResolver.takePersistableUriPermission(
-                            uri,
-                            Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                        )
-                    } catch (_: Exception) {}
+    private fun startDownload(args: Map<*, *>, result: MethodChannel.Result) {
+        val url = args["url"] as? String ?: ""
+        val baseName = (args["baseName"] as? String)?.takeIf { it.isNotBlank() } ?: "video"
+        val format = args["format"] as? String ?: ""
+        val isAudioOnly = args["isAudioOnly"] as? Boolean ?: false
+        val audioFormat = args["audioFormat"] as? String ?: "mp3"
+        val treeUri = args["treeUri"] as? String
 
-                    val path = getPathFromTreeUri(uri)
-                    pendingFolderResult?.success(path)
-                } else {
-                    pendingFolderResult?.success(null)
+        if (url.isEmpty()) {
+            result.error("INVALID_URL", "URL vacía", null)
+            return
+        }
+        if (activeProcessId != null) {
+            result.error("BUSY", "Ya hay una descarga en curso", null)
+            return
+        }
+
+        val processId = UUID.randomUUID().toString()
+        activeProcessId = processId
+        val workDir = File(workRoot, processId).apply { mkdirs() }
+        // La descarga corre en segundo plano; el resultado llega por el EventChannel.
+        result.success(true)
+
+        engineScope.launch {
+            try {
+                YtDlpEngine.ensureInitialized(applicationContext)
+                YtDlpEngine.awaitPendingUpdate()
+
+                val request = YoutubeDLRequest(url).apply {
+                    addOption("-o", File(workDir, "$baseName.%(ext)s").absolutePath)
+                    addOption("--no-playlist")
+                    addOption("--newline")
+                    if (isAudioOnly) {
+                        addOption("-x")
+                        addOption("--audio-format", audioFormat)
+                        addOption("--audio-quality", "0")
+                    } else {
+                        if (format.isNotEmpty()) addOption("-f", format)
+                        addOption("-S", "vcodec:h264,res,acodec:aac")
+                        addOption("--merge-output-format", "mp4")
+                    }
                 }
-            } else {
-                pendingFolderResult?.success(null)
+
+                YoutubeDL.getInstance().execute(request, processId) { progress: Float, eta: Long, line: String ->
+                    YtDlpEngine.describeProgress(progress, eta, line)?.let { emit(it) }
+                }
+
+                val output = findOutputFile(workDir)
+                    ?: throw IllegalStateException("yt-dlp terminó pero no se encontró el archivo descargado")
+
+                emit(
+                    mapOf(
+                        "status" to "processing",
+                        "progress" to 99.0,
+                        "step" to "Guardando en la carpeta de destino…",
+                    )
+                )
+                val exported = MediaExporter.export(applicationContext, output, treeUri)
+                Log.i(TAG, "Archivo exportado: ${exported.displayPath} (${exported.uri})")
+
+                emit(
+                    mapOf(
+                        "status" to "completed",
+                        "progress" to 100.0,
+                        "filePath" to exported.displayPath,
+                        "uri" to exported.uri.toString(),
+                        "step" to "¡Descarga Exitosa!",
+                    )
+                )
+            } catch (e: Exception) {
+                Log.w(TAG, "Descarga fallida", e)
+                emit(mapOf("status" to "error", "error" to YtDlpEngine.cleanError(e.message)))
+            } finally {
+                workDir.deleteRecursively()
+                if (activeProcessId == processId) activeProcessId = null
             }
+        }
+    }
+
+    private fun emit(event: Map<String, Any?>) {
+        runOnUiThread { downloadEventSink?.success(event) }
+    }
+
+    /** El archivo final es el más grande que no sea temporal de yt-dlp. */
+    private fun findOutputFile(dir: File): File? {
+        val tempSuffixes = listOf(".part", ".ytdl", ".temp", ".tmp")
+        return dir.listFiles()
+            ?.filter { f -> f.isFile && tempSuffixes.none { f.name.endsWith(it) } && !f.name.contains(".part-Frag") }
+            ?.maxByOrNull { it.length() }
+    }
+
+    private fun cleanStaleWorkDirs() {
+        workRoot.listFiles()?.forEach { dir ->
+            if (dir.name != activeProcessId) dir.deleteRecursively()
+        }
+    }
+
+    private fun pickFolder(result: MethodChannel.Result) {
+        if (pendingFolderResult != null) {
+            result.error("ALREADY_ACTIVE", "Un selector ya está activo", null)
+            return
+        }
+        pendingFolderResult = result
+        try {
+            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+                flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                    Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+            }
+            startActivityForResult(intent, PICK_FOLDER_REQUEST_CODE)
+        } catch (e: Exception) {
+            pendingFolderResult?.error("INTENT_ERROR", e.message, null)
             pendingFolderResult = null
         }
     }
 
-    private fun getPathFromTreeUri(uri: Uri): String {
-        return try {
-            val docId = DocumentsContract.getTreeDocumentId(uri)
-            val parts = docId.split(":")
-            val type = parts[0]
-            val relativePath = if (parts.size > 1) parts[1] else ""
-
-            if ("primary".equals(type, ignoreCase = true)) {
-                if (relativePath.isNotEmpty()) {
-                    "${Environment.getExternalStorageDirectory().absolutePath}/$relativePath"
-                } else {
-                    Environment.getExternalStorageDirectory().absolutePath
-                }
-            } else {
-                val externalRoot = File("/storage/$type")
-                if (externalRoot.exists()) {
-                    if (relativePath.isNotEmpty()) {
-                        "${externalRoot.absolutePath}/$relativePath"
-                    } else {
-                        externalRoot.absolutePath
-                    }
-                } else {
-                    "/storage/$type/$relativePath"
-                }
-            }
-        } catch (e: Exception) {
-            uri.path ?: ""
+    /** Solo Android 7–9 necesita permiso para escribir en Download/; desde Android 10 se usa MediaStore. */
+    private fun ensureStoragePermission(result: MethodChannel.Result) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ||
+            checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+        ) {
+            result.success(true)
+            return
         }
+        if (pendingPermissionResult != null) {
+            result.error("ALREADY_ACTIVE", "Ya se está solicitando el permiso", null)
+            return
+        }
+        pendingPermissionResult = result
+        requestPermissions(arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE), STORAGE_PERMISSION_REQUEST_CODE)
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == STORAGE_PERMISSION_REQUEST_CODE) {
+            val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
+            pendingPermissionResult?.success(granted)
+            pendingPermissionResult = null
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != PICK_FOLDER_REQUEST_CODE) return
+
+        val uri: Uri? = if (resultCode == Activity.RESULT_OK) data?.data else null
+        if (uri == null) {
+            pendingFolderResult?.success(null)
+        } else {
+            try {
+                contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+                MediaExporter.releaseOtherTreePermissions(applicationContext, uri)
+                pendingFolderResult?.success(
+                    mapOf("uri" to uri.toString(), "path" to MediaExporter.displayPathForTree(uri))
+                )
+            } catch (e: SecurityException) {
+                pendingFolderResult?.error("PERMISSION_ERROR", "No se pudo obtener acceso a la carpeta: ${e.message}", null)
+            }
+        }
+        pendingFolderResult = null
     }
 }

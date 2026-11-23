@@ -14,7 +14,11 @@ class DownloadProgress {
   final String? eta;
   final String? currentStep;
   final String? errorMessage;
+  /// Ruta del archivo final para mostrar al usuario.
   final String? outputFilePath;
+
+  /// URI `content://` del archivo final (solo Android: MediaStore o SAF).
+  final String? outputUri;
 
   const DownloadProgress({
     this.status = DownloadStatus.idle,
@@ -24,6 +28,7 @@ class DownloadProgress {
     this.currentStep,
     this.errorMessage,
     this.outputFilePath,
+    this.outputUri,
   });
 
   DownloadProgress copyWith({
@@ -34,6 +39,7 @@ class DownloadProgress {
     String? currentStep,
     String? errorMessage,
     String? outputFilePath,
+    String? outputUri,
   }) {
     return DownloadProgress(
       status: status ?? this.status,
@@ -43,6 +49,7 @@ class DownloadProgress {
       currentStep: currentStep ?? this.currentStep,
       errorMessage: errorMessage ?? this.errorMessage,
       outputFilePath: outputFilePath ?? this.outputFilePath,
+      outputUri: outputUri ?? this.outputUri,
     );
   }
 }

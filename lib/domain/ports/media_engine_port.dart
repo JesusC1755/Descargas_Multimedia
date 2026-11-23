@@ -1,3 +1,4 @@
+import '../models/download_destination.dart';
 import '../models/download_progress.dart';
 import '../models/media_info.dart';
 import '../models/stream_option.dart';
@@ -13,7 +14,7 @@ abstract class IMediaEngine {
   Stream<DownloadProgress> download({
     required String url,
     required StreamOption option,
-    required String downloadDir,
+    required DownloadDestination destination,
     String? customTitle,
   });
 

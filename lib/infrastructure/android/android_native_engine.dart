@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/services.dart';
 
 import '../../core/logging/app_logger.dart';
+import '../../domain/models/download_destination.dart';
 import '../../domain/models/download_progress.dart';
 import '../../domain/models/media_info.dart';
 import '../../domain/models/stream_option.dart';
@@ -14,6 +14,8 @@ import '../desktop/desktop_process_engine.dart';
 class AndroidNativeEngine implements IMediaEngine {
   static const MethodChannel _channel = MethodChannel('com.example.media_downloader/engine');
   static const EventChannel _eventChannel = EventChannel('com.example.media_downloader/download_progress');
+  static const MethodChannel _folderChannel = MethodChannel('com.example.media_downloader/folder_picker');
+
 
   /// En Android no se recodifica VP9/AV1 → H.264 (lento y costoso en batería),
   /// así que solo se ofrecen resoluciones con H.264 nativo, hasta 1080p.
@@ -93,94 +95,91 @@ class AndroidNativeEngine implements IMediaEngine {
   Stream<DownloadProgress> download({
     required String url,
     required StreamOption option,
-    required String downloadDir,
+    required DownloadDestination destination,
     String? customTitle,
   }) {
     final controller = StreamController<DownloadProgress>();
 
-    DownloadProgress currentProgress = const DownloadProgress(
+    void emit(DownloadProgress p) {
+      if (!controller.isClosed) controller.add(p);
+    }
+
+    void finish() {
+      _activeSubscription?.cancel();
+      _activeSubscription = null;
+      if (!controller.isClosed) controller.close();
+    }
+
+    emit(const DownloadProgress(
       status: DownloadStatus.downloading,
       percentage: 0.0,
       currentStep: 'Iniciando descarga en dispositivo móvil...',
-    );
-    controller.add(currentProgress);
+    ));
 
-    final expectedExt = option.isAudioOnly ? option.extension.toLowerCase().trim() : 'mp4';
-    final normalizedDir = downloadDir.endsWith(Platform.pathSeparator)
-        ? downloadDir.substring(0, downloadDir.length - 1)
-        : downloadDir;
-
-    final uniqueBaseName = DesktopProcessEngine.resolveOutputBaseName(
-      customTitle: customTitle,
-      option: option,
-      downloadDir: normalizedDir,
-    );
-
-    final outputTemplate = '$normalizedDir${Platform.pathSeparator}$uniqueBaseName.%(ext)s';
-    final expectedFinalPath = '$normalizedDir${Platform.pathSeparator}$uniqueBaseName.$expectedExt';
-
-    _channel.invokeMethod('download', {
-      'url': url,
-      'outputPath': outputTemplate,
-      'format': option.formatId,
-      'isAudioOnly': option.isAudioOnly,
-      'audioFormat': option.extension,
-      'expectedFinalPath': expectedFinalPath,
-    }).catchError((err) {
-      controller.add(
-        DownloadProgress(
-          status: DownloadStatus.error,
-          errorMessage: err.toString(),
-        ),
-      );
-      controller.close();
-    });
+    // yt-dlp descarga en una carpeta privada de la app y el lado nativo exporta el
+    // archivo al destino (MediaStore o SAF), que resuelve también los nombres repetidos.
+    final title = (customTitle == null || customTitle.trim().isEmpty) ? 'video' : customTitle.trim();
+    final baseName =
+        '${DesktopProcessEngine.sanitizeFilename(title)} [${DesktopProcessEngine.getQualityTag(option)}]';
 
     _activeSubscription?.cancel();
     _activeSubscription = _eventChannel.receiveBroadcastStream().listen(
       (dynamic event) {
-        if (event is Map) {
-          final statusStr = event['status']?.toString() ?? 'downloading';
-          final progressVal = (event['progress'] as num?)?.toDouble() ?? 0.0;
-          final speedStr = event['speed']?.toString();
-          final etaStr = event['eta']?.toString();
-          final currentStep = event['step']?.toString() ?? 'Descargando...';
-          final filePath = event['filePath']?.toString();
+        if (event is! Map) return;
+        final status = switch (event['status']?.toString()) {
+          'completed' => DownloadStatus.completed,
+          'error' => DownloadStatus.error,
+          'processing' => DownloadStatus.processing,
+          _ => DownloadStatus.downloading,
+        };
 
-          final status = switch (statusStr) {
-            'completed' => DownloadStatus.completed,
-            'error' => DownloadStatus.error,
-            'processing' => DownloadStatus.processing,
-            _ => DownloadStatus.downloading,
-          };
+        emit(DownloadProgress(
+          status: status,
+          percentage: ((event['progress'] as num?)?.toDouble() ?? 0.0).clamp(0.0, 100.0),
+          speed: event['speed']?.toString(),
+          eta: event['eta']?.toString(),
+          currentStep: event['step']?.toString() ?? 'Descargando...',
+          outputFilePath: event['filePath']?.toString(),
+          outputUri: event['uri']?.toString(),
+          errorMessage: status == DownloadStatus.error ? event['error']?.toString() : null,
+        ));
 
-          final progress = DownloadProgress(
-            status: status,
-            percentage: progressVal.clamp(0.0, 100.0),
-            speed: speedStr,
-            eta: etaStr,
-            currentStep: currentStep,
-            outputFilePath: filePath ?? (status == DownloadStatus.completed ? expectedFinalPath : null),
-            errorMessage: status == DownloadStatus.error ? event['error']?.toString() : null,
-          );
-
-          controller.add(progress);
-          if (status == DownloadStatus.completed || status == DownloadStatus.error) {
-            _activeSubscription?.cancel();
-            controller.close();
-          }
+        if (status == DownloadStatus.completed || status == DownloadStatus.error) {
+          finish();
         }
       },
       onError: (err) {
-        controller.add(
-          DownloadProgress(
-            status: DownloadStatus.error,
-            errorMessage: err.toString(),
-          ),
-        );
-        controller.close();
+        emit(DownloadProgress(status: DownloadStatus.error, errorMessage: err.toString()));
+        finish();
       },
     );
+
+    Future<void> start() async {
+      // Android 7–9 necesita permiso para escribir en Download/ (desde Android 10 se usa MediaStore).
+      if (destination.isAndroidDefault) {
+        final granted = await _folderChannel.invokeMethod<bool>('ensureStoragePermission') ?? false;
+        if (!granted) {
+          throw PlatformException(
+            code: 'PERMISSION_DENIED',
+            message: 'Se necesita permiso de almacenamiento para guardar en Descargas.',
+          );
+        }
+      }
+      await _channel.invokeMethod('download', {
+        'url': url,
+        'format': option.formatId,
+        'isAudioOnly': option.isAudioOnly,
+        'audioFormat': option.extension,
+        'baseName': baseName,
+        'treeUri': destination.androidTreeUri,
+      });
+    }
+
+    start().catchError((Object err) {
+      final message = err is PlatformException ? (err.message ?? err.code) : err.toString();
+      emit(DownloadProgress(status: DownloadStatus.error, errorMessage: message));
+      finish();
+    });
 
     return controller.stream;
   }

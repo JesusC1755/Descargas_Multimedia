@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 import '../../core/logging/app_logger.dart';
+import '../../domain/models/download_destination.dart';
 import '../../domain/models/download_progress.dart';
 import '../../domain/models/media_info.dart';
 import '../../domain/models/stream_option.dart';
@@ -398,7 +399,7 @@ class DesktopProcessEngine implements IMediaEngine {
     return cleaned.isNotEmpty ? cleaned : rawTitle;
   }
 
-  @visibleForTesting
+  /// Limpia un título para usarlo como nombre de archivo (compartido con Android).
   static String sanitizeFilename(String title, {int maxLength = 160}) {
     var safe = title.replaceAll(_emojiRegex, '');
     safe = safe.replaceAll(RegExp(r'[\\/:*?"<>|\x00-\x1F]'), '_');
@@ -411,7 +412,6 @@ class DesktopProcessEngine implements IMediaEngine {
   }
 
   /// Genera una etiqueta corta y limpia para el nombre de archivo (ej. [1080p], [720p], [MP3], [M4A]).
-  @visibleForTesting
   static String getQualityTag(StreamOption option) {
     if (option.isAudioOnly) {
       final label = option.label
@@ -474,9 +474,10 @@ class DesktopProcessEngine implements IMediaEngine {
   Stream<DownloadProgress> download({
     required String url,
     required StreamOption option,
-    required String downloadDir,
+    required DownloadDestination destination,
     String? customTitle,
   }) {
+    final downloadDir = destination.displayPath;
     final controller = StreamController<DownloadProgress>();
     DownloadProgress currentProgress = const DownloadProgress(
       status: DownloadStatus.downloading,
