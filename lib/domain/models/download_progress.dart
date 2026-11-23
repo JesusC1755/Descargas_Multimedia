@@ -4,6 +4,7 @@ enum DownloadStatus {
   downloading,
   processing,
   completed,
+  cancelled,
   error,
 }
 

@@ -14,6 +14,7 @@ import '../../domain/ports/media_engine_port.dart';
 class DesktopProcessEngine implements IMediaEngine {
   Process? _activeProcess;
   Process? _activeTranscodeProcess;
+  bool _cancelRequested = false;
 
   static final RegExp _emojiRegex = RegExp(
     r'[\u{1F600}-\u{1F64F}' // Emoticons
@@ -479,6 +480,7 @@ class DesktopProcessEngine implements IMediaEngine {
   }) {
     final downloadDir = destination.displayPath;
     final controller = StreamController<DownloadProgress>();
+    _cancelRequested = false;
     DownloadProgress currentProgress = const DownloadProgress(
       status: DownloadStatus.downloading,
       percentage: 0.0,
@@ -667,6 +669,12 @@ class DesktopProcessEngine implements IMediaEngine {
             );
             controller.close();
           }
+        } else if (_cancelRequested) {
+          talker.info('Descarga cancelada por el usuario (exitCode $code)');
+          controller.add(
+            currentProgress.copyWith(status: DownloadStatus.cancelled, currentStep: 'Descarga cancelada'),
+          );
+          controller.close();
         } else {
           final errorMsg = stderrBuffer.toString().trim();
           final formattedError = errorMsg.isNotEmpty
@@ -809,6 +817,7 @@ class DesktopProcessEngine implements IMediaEngine {
   @override
   void cancel() {
     talker.warning('Cancelando proceso de descarga activo a petición del usuario.');
+    _cancelRequested = true;
     try {
       _activeProcess?.kill();
     } catch (e) {

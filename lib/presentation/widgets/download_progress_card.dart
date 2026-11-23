@@ -79,6 +79,7 @@ class _DownloadProgressCardState extends State<DownloadProgressCard>
     final theme = Theme.of(context);
     final isDone = widget.progress.status == DownloadStatus.completed;
     final isError = widget.progress.status == DownloadStatus.error;
+    final isCancelled = widget.progress.status == DownloadStatus.cancelled;
     final isProcessing = widget.progress.status == DownloadStatus.processing ||
         (widget.progress.currentStep?.toLowerCase().contains('ffmpeg') ?? false) ||
         (widget.progress.currentStep?.toLowerCase().contains('uniendo') ?? false);
@@ -87,7 +88,9 @@ class _DownloadProgressCardState extends State<DownloadProgressCard>
         ? theme.colorScheme.tertiary
         : isError
             ? theme.colorScheme.error
-            : theme.colorScheme.primary.withValues(alpha: 0.85);
+            : isCancelled
+                ? theme.colorScheme.outlineVariant
+                : theme.colorScheme.primary.withValues(alpha: 0.85);
 
     return Card(
       elevation: 2,
@@ -104,7 +107,9 @@ class _DownloadProgressCardState extends State<DownloadProgressCard>
             // Cabecera de estado
             Row(
               children: [
-                _buildStatusIcon(context, theme, isDone, isError, isProcessing),
+                isCancelled
+                    ? _buildCancelledIcon(theme)
+                    : _buildStatusIcon(context, theme, isDone, isError, isProcessing),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -115,7 +120,9 @@ class _DownloadProgressCardState extends State<DownloadProgressCard>
                             ? '¡Descarga Exitosa!'
                             : isError
                                 ? 'Fallo en la Operación'
-                                : isProcessing
+                                : isCancelled
+                                    ? 'Descarga cancelada'
+                                    : isProcessing
                                     ? 'Procesando y combinando pistas...'
                                     : 'Descargando flujo multimedia...',
                         style: theme.textTheme.titleMedium?.copyWith(
@@ -124,10 +131,12 @@ class _DownloadProgressCardState extends State<DownloadProgressCard>
                               ? theme.colorScheme.tertiary
                               : isError
                                   ? theme.colorScheme.error
-                                  : theme.colorScheme.onSurface,
+                                  : isCancelled
+                                      ? theme.colorScheme.onSurfaceVariant
+                                      : theme.colorScheme.onSurface,
                         ),
                       ),
-                      if (widget.progress.currentStep != null && !isDone && !isError) ...[
+                      if (widget.progress.currentStep != null && !isDone && !isError && !isCancelled) ...[
                         const SizedBox(height: 2),
                         Text(
                           widget.progress.currentStep!,
@@ -141,7 +150,7 @@ class _DownloadProgressCardState extends State<DownloadProgressCard>
                     ],
                   ),
                 ),
-                if (!isDone && !isError)
+                if (!isDone && !isError && !isCancelled)
                   OutlinedButton.icon(
                     onPressed: widget.onCancel,
                     icon: const Icon(Icons.stop_circle_outlined, size: 16),
@@ -161,6 +170,8 @@ class _DownloadProgressCardState extends State<DownloadProgressCard>
             // Contenido según estado: Activo vs Completado vs Error
             if (isError)
               _buildErrorView(context, theme)
+            else if (isCancelled)
+              _buildCancelledView(theme)
             else if (isDone)
               _buildCompletedView(context, theme)
             else
@@ -168,6 +179,37 @@ class _DownloadProgressCardState extends State<DownloadProgressCard>
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildCancelledIcon(ThemeData theme) {
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        shape: BoxShape.circle,
+      ),
+      child: Icon(Icons.block_rounded, color: theme.colorScheme.onSurfaceVariant, size: 24),
+    );
+  }
+
+  Widget _buildCancelledView(ThemeData theme) {
+    return Wrap(
+      spacing: 12,
+      runSpacing: 10,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        Text(
+          'No se guardó ningún archivo.',
+          style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+        ),
+        if (widget.onRetry != null)
+          FilledButton.tonalIcon(
+            onPressed: widget.onRetry,
+            icon: const Icon(Icons.refresh_rounded, size: 18),
+            label: const Text('Volver a descargar'),
+          ),
+      ],
     );
   }
 
