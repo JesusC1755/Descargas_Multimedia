@@ -104,66 +104,91 @@ class _DownloadProgressCardState extends State<DownloadProgressCard>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Cabecera de estado
-            Row(
-              children: [
-                isCancelled
-                    ? _buildCancelledIcon(theme)
-                    : _buildStatusIcon(context, theme, isDone, isError, isProcessing),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        isDone
-                            ? '¡Descarga Exitosa!'
-                            : isError
-                                ? 'Fallo en la Operación'
-                                : isCancelled
-                                    ? 'Descarga cancelada'
-                                    : isProcessing
-                                    ? 'Procesando y combinando pistas...'
-                                    : 'Descargando flujo multimedia...',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: isDone
-                              ? theme.colorScheme.tertiary
-                              : isError
-                                  ? theme.colorScheme.error
-                                  : isCancelled
-                                      ? theme.colorScheme.onSurfaceVariant
-                                      : theme.colorScheme.onSurface,
-                        ),
-                      ),
-                      if (widget.progress.currentStep != null && !isDone && !isError && !isCancelled) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          widget.progress.currentStep!,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
+            // Cabecera de estado. En pantallas angostas: títulos cortos en una línea y
+            // "Cancelar" solo como icono, para que el texto no se parta en varias líneas.
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final compact = constraints.maxWidth < 420;
+                final isActive = !isDone && !isError && !isCancelled;
+                final title = isDone
+                    ? '¡Descarga Exitosa!'
+                    : isError
+                        ? 'Fallo en la Operación'
+                        : isCancelled
+                            ? 'Descarga cancelada'
+                            : isProcessing
+                                ? (compact ? 'Procesando...' : 'Procesando y combinando pistas...')
+                                : (compact ? 'Descargando...' : 'Descargando flujo multimedia...');
+                final cancelStyle = OutlinedButton.styleFrom(
+                  foregroundColor: theme.colorScheme.error,
+                  side: BorderSide(color: theme.colorScheme.error.withValues(alpha: 0.6)),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                );
+
+                return Row(
+                  children: [
+                    isCancelled
+                        ? _buildCancelledIcon(theme)
+                        : _buildStatusIcon(context, theme, isDone, isError, isProcessing),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: isDone
+                                  ? theme.colorScheme.tertiary
+                                  : isError
+                                      ? theme.colorScheme.error
+                                      : isCancelled
+                                          ? theme.colorScheme.onSurfaceVariant
+                                          : theme.colorScheme.onSurface,
+                            ),
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                if (!isDone && !isError && !isCancelled)
-                  OutlinedButton.icon(
-                    onPressed: widget.onCancel,
-                    icon: const Icon(Icons.stop_circle_outlined, size: 16),
-                    label: const Text('Cancelar'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: theme.colorScheme.error,
-                      side: BorderSide(
-                        color: theme.colorScheme.error.withValues(alpha: 0.6),
+                          if (widget.progress.currentStep != null && isActive) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              widget.progress.currentStep!,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                              maxLines: compact ? 2 : 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ],
                       ),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     ),
-                  ),
-              ],
+                    if (isActive) ...[
+                      const SizedBox(width: 8),
+                      if (compact)
+                        Tooltip(
+                          message: 'Cancelar descarga',
+                          child: OutlinedButton(
+                            onPressed: widget.onCancel,
+                            style: cancelStyle.copyWith(
+                              padding: const WidgetStatePropertyAll(EdgeInsets.all(10)),
+                              minimumSize: const WidgetStatePropertyAll(Size(44, 44)),
+                            ),
+                            child: const Icon(Icons.stop_circle_outlined, size: 20),
+                          ),
+                        )
+                      else
+                        OutlinedButton.icon(
+                          onPressed: widget.onCancel,
+                          icon: const Icon(Icons.stop_circle_outlined, size: 16),
+                          label: const Text('Cancelar'),
+                          style: cancelStyle,
+                        ),
+                    ],
+                  ],
+                );
+              },
             ),
             const SizedBox(height: 16),
 
@@ -495,42 +520,57 @@ class _DownloadProgressCardState extends State<DownloadProgressCard>
           color: theme.colorScheme.tertiary.withValues(alpha: 0.3),
         ),
       ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'El archivo está listo y guardado en tu carpeta de descargas.',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: theme.colorScheme.onTertiaryContainer,
-                  ),
+      // En pantallas angostas el botón pasa debajo del texto para no comprimirlo.
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 420;
+          final info = Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'El archivo está listo y guardado en tu carpeta de descargas.',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: theme.colorScheme.onTertiaryContainer,
                 ),
-                if (widget.progress.outputFilePath != null) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    widget.progress.outputFilePath!,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
+              ),
+              if (widget.progress.outputFilePath != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  widget.progress.outputFilePath!,
+                  style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  maxLines: compact ? 3 : 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ],
-            ),
-          ),
-          if (widget.onOpenFolder != null) ...[
-            const SizedBox(width: 12),
-            FilledButton.tonalIcon(
-              onPressed: widget.onOpenFolder,
-              icon: const Icon(Icons.folder_open_rounded, size: 16),
-              label: const Text('Abrir Carpeta'),
-            ),
-          ],
-        ],
+            ],
+          );
+          final button = widget.onOpenFolder == null
+              ? null
+              : FilledButton.tonalIcon(
+                  onPressed: widget.onOpenFolder,
+                  icon: const Icon(Icons.folder_open_rounded, size: 16),
+                  label: const Text('Abrir Carpeta'),
+                );
+
+          if (compact) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                info,
+                if (button != null) ...[const SizedBox(height: 12), button],
+              ],
+            );
+          }
+          return Row(
+            children: [
+              Expanded(child: info),
+              if (button != null) ...[const SizedBox(width: 12), button],
+            ],
+          );
+        },
       ),
     );
   }
@@ -559,7 +599,10 @@ class _DownloadProgressCardState extends State<DownloadProgressCard>
           ),
         ),
         const SizedBox(height: 14),
-        Row(
+        // Wrap: en pantallas angostas los botones pasan a la línea siguiente en vez de desbordarse.
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
           children: [
             FilledButton.tonalIcon(
               onPressed: () => _copyErrorToClipboard(
@@ -569,22 +612,18 @@ class _DownloadProgressCardState extends State<DownloadProgressCard>
               icon: const Icon(Icons.copy_all_rounded, size: 16),
               label: const Text('Copiar Traza'),
             ),
-            if (kDebugMode) ...[
-              const SizedBox(width: 10),
+            if (kDebugMode)
               OutlinedButton.icon(
                 onPressed: () => _openTalkerScreen(context),
                 icon: const Icon(Icons.terminal_rounded, size: 16),
                 label: const Text('Ver Consola de Logs'),
               ),
-            ],
-            if (widget.onRetry != null) ...[
-              const Spacer(),
+            if (widget.onRetry != null)
               FilledButton.icon(
                 onPressed: widget.onRetry,
                 icon: const Icon(Icons.refresh_rounded, size: 16),
                 label: const Text('Reintentar'),
               ),
-            ],
           ],
         ),
       ],
