@@ -15,23 +15,21 @@ class AndroidNativeEngine implements IMediaEngine {
   static const MethodChannel _channel = MethodChannel('com.example.media_downloader/engine');
   static const EventChannel _eventChannel = EventChannel('com.example.media_downloader/download_progress');
 
+  /// En Android no se recodifica VP9/AV1 → H.264 (lento y costoso en batería),
+  /// así que solo se ofrecen resoluciones con H.264 nativo, hasta 1080p.
+  static const int maxVideoHeight = 1080;
+
   StreamSubscription? _activeSubscription;
   bool _isInit = false;
+  bool _diagnosticsLogged = false;
 
   Future<bool> _ensureInitialized() async {
     if (_isInit) return true;
     try {
+      // El lado nativo responde en cuanto yt-dlp/FFmpeg están listos y actualiza
+      // yt-dlp en segundo plano (como máximo una vez cada 24 h).
       final success = await _channel.invokeMethod<bool>('init') ?? false;
       _isInit = success;
-      if (_isInit) {
-        unawaited(
-          _channel.invokeMethod('updateYtDlp').then((res) {
-            talker.info('yt-dlp en Android actualizado / estado: $res');
-          }).catchError((e) {
-            talker.warning('Actualización automática de yt-dlp omitida: $e');
-          }),
-        );
-      }
       return _isInit;
     } catch (e, st) {
       talker.error('Error inicializando motor nativo Android (youtubedl-android)', e, st);
@@ -55,10 +53,21 @@ class AndroidNativeEngine implements IMediaEngine {
     talker.info('AndroidNativeEngine: Analizando URL en motor nativo: $url');
 
     try {
-      final jsonString = await _channel.invokeMethod<String>('analyzeUrl', {
+      final result = await _channel.invokeMapMethod<String, dynamic>('analyzeUrl', {
         'url': url,
       });
 
+      final debugLines = (result?['debug'] as List?)?.cast<String>() ?? const [];
+      if (!_diagnosticsLogged && debugLines.isNotEmpty) {
+        _diagnosticsLogged = true;
+        talker.info('Diagnóstico yt-dlp (Android):\n${debugLines.join('\n')}');
+      }
+      final warnings = (result?['warnings'] as List?)?.cast<String>() ?? const [];
+      for (final w in warnings) {
+        talker.warning('[yt-dlp] $w');
+      }
+
+      final jsonString = result?['json'] as String?;
       if (jsonString == null || jsonString.isEmpty) {
         throw Exception('No se obtuvieron metadatos del contenido.');
       }
@@ -68,7 +77,12 @@ class AndroidNativeEngine implements IMediaEngine {
         throw Exception('Estructura de metadatos inesperada del motor móvil.');
       }
 
-      return DesktopProcessEngine.parseMediaInfo(rawJson, url);
+      return DesktopProcessEngine.parseMediaInfo(
+        rawJson,
+        url,
+        h264Only: true,
+        maxHeight: maxVideoHeight,
+      );
     } catch (e, st) {
       talker.error('Error al analizar URL en Android', e, st);
       rethrow;
@@ -133,12 +147,12 @@ class AndroidNativeEngine implements IMediaEngine {
           final currentStep = event['step']?.toString() ?? 'Descargando...';
           final filePath = event['filePath']?.toString();
 
-          DownloadStatus status = DownloadStatus.downloading;
-          if (statusStr == 'completed') {
-            status = DownloadStatus.completed;
-          } else if (statusStr == 'error') {
-            status = DownloadStatus.error;
-          }
+          final status = switch (statusStr) {
+            'completed' => DownloadStatus.completed,
+            'error' => DownloadStatus.error,
+            'processing' => DownloadStatus.processing,
+            _ => DownloadStatus.downloading,
+          };
 
           final progress = DownloadProgress(
             status: status,

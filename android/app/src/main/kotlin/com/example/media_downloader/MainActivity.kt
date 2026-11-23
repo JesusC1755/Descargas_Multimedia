@@ -5,21 +5,27 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Environment
 import android.provider.DocumentsContract
+import android.util.Log
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
-import com.yausername.ffmpeg.FFmpeg
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.UUID
 
+private const val TAG = "MediaDownloader"
+
 class MainActivity : FlutterActivity() {
+    // Ámbito único para el trabajo del motor (en la fase de servicio pasará a DownloadService).
+    private val engineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     private val FOLDER_CHANNEL = "com.example.media_downloader/folder_picker"
     private val ENGINE_CHANNEL = "com.example.media_downloader/engine"
     private val PROGRESS_CHANNEL = "com.example.media_downloader/download_progress"
@@ -29,7 +35,6 @@ class MainActivity : FlutterActivity() {
 
     private var downloadEventSink: EventChannel.EventSink? = null
     private var activeProcessId: String? = null
-    private var isEngineInitialized = false
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -75,44 +80,33 @@ class MainActivity : FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, ENGINE_CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
                 "init" -> {
-                    if (isEngineInitialized) {
-                        result.success(true)
-                        return@setMethodCallHandler
-                    }
-                    CoroutineScope(Dispatchers.IO).launch {
+                    engineScope.launch {
                         try {
-                            YoutubeDL.getInstance().init(applicationContext)
-                            FFmpeg.getInstance().init(applicationContext)
-                            isEngineInitialized = true
-                            // Intentar actualizar yt-dlp automáticamente a la versión más reciente
-                            try {
-                                YoutubeDL.getInstance().updateYoutubeDL(applicationContext)
-                            } catch (_: Exception) {}
-                            withContext(Dispatchers.Main) {
-                                result.success(true)
-                            }
+                            YtDlpEngine.ensureInitialized(applicationContext)
+                            withContext(Dispatchers.Main) { result.success(true) }
                         } catch (e: Exception) {
                             withContext(Dispatchers.Main) {
-                                result.error("INIT_ERROR", e.message, null)
+                                result.error("INIT_ERROR", YtDlpEngine.cleanError(e.message), null)
                             }
+                            return@launch
+                        }
+                        // Actualización en segundo plano (máx. 1 vez cada 24 h); no bloquea el arranque.
+                        try {
+                            val status = YtDlpEngine.updateIfDue(applicationContext)
+                            Log.i(TAG, "Actualización de yt-dlp: $status (versión ${YtDlpEngine.version(applicationContext)})")
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Actualización de yt-dlp omitida: ${e.message}")
                         }
                     }
                 }
                 "updateYtDlp" -> {
-                    CoroutineScope(Dispatchers.IO).launch {
+                    engineScope.launch {
                         try {
-                            if (!isEngineInitialized) {
-                                YoutubeDL.getInstance().init(applicationContext)
-                                FFmpeg.getInstance().init(applicationContext)
-                                isEngineInitialized = true
-                            }
-                            val status = YoutubeDL.getInstance().updateYoutubeDL(applicationContext)
-                            withContext(Dispatchers.Main) {
-                                result.success(status?.name ?: "OK")
-                            }
+                            val status = YtDlpEngine.updateIfDue(applicationContext, force = true)
+                            withContext(Dispatchers.Main) { result.success(status) }
                         } catch (e: Exception) {
                             withContext(Dispatchers.Main) {
-                                result.error("UPDATE_ERROR", e.message, null)
+                                result.error("UPDATE_ERROR", YtDlpEngine.cleanError(e.message), null)
                             }
                         }
                     }
@@ -124,28 +118,21 @@ class MainActivity : FlutterActivity() {
                         return@setMethodCallHandler
                     }
 
-                    CoroutineScope(Dispatchers.IO).launch {
+                    engineScope.launch {
                         try {
-                            if (!isEngineInitialized) {
-                                YoutubeDL.getInstance().init(applicationContext)
-                                FFmpeg.getInstance().init(applicationContext)
-                                isEngineInitialized = true
-                            }
-
-                            val request = YoutubeDLRequest(url).apply {
-                                addOption("--dump-json")
-                                addOption("--no-playlist")
-                                addOption("--no-check-certificates")
-                                addOption("--extractor-args", "youtube:player_client=android,web")
-                            }
-
-                            val response = YoutubeDL.getInstance().execute(request)
+                            val analysis = YtDlpEngine.analyze(applicationContext, url)
                             withContext(Dispatchers.Main) {
-                                result.success(response.out)
+                                result.success(
+                                    mapOf(
+                                        "json" to analysis.json,
+                                        "debug" to analysis.debug,
+                                        "warnings" to analysis.warnings,
+                                    )
+                                )
                             }
                         } catch (e: Exception) {
                             withContext(Dispatchers.Main) {
-                                result.error("ANALYZE_ERROR", e.message, null)
+                                result.error("ANALYZE_ERROR", YtDlpEngine.cleanError(e.message), null)
                             }
                         }
                     }
@@ -161,24 +148,23 @@ class MainActivity : FlutterActivity() {
                     val processId = UUID.randomUUID().toString()
                     activeProcessId = processId
 
-                    CoroutineScope(Dispatchers.IO).launch {
+                    engineScope.launch {
                         try {
-                            if (!isEngineInitialized) {
-                                YoutubeDL.getInstance().init(applicationContext)
-                                FFmpeg.getInstance().init(applicationContext)
-                                isEngineInitialized = true
-                            }
+                            YtDlpEngine.ensureInitialized(applicationContext)
+                            YtDlpEngine.awaitPendingUpdate()
 
                             val request = YoutubeDLRequest(url).apply {
                                 addOption("-o", outputPath)
+                                addOption("--no-playlist")
                                 addOption("--newline")
-                                addOption("--no-check-certificates")
-                                addOption("--extractor-args", "youtube:player_client=android,web")
                                 if (isAudioOnly) {
                                     addOption("-x")
                                     addOption("--audio-format", audioFormat)
-                                } else if (format.isNotEmpty()) {
-                                    addOption("-f", format)
+                                    addOption("--audio-quality", "0")
+                                } else {
+                                    if (format.isNotEmpty()) addOption("-f", format)
+                                    addOption("-S", "vcodec:h264,res,acodec:aac")
+                                    addOption("--merge-output-format", "mp4")
                                 }
                             }
 
@@ -186,14 +172,9 @@ class MainActivity : FlutterActivity() {
                                 request = request,
                                 processId = processId,
                                 callback = { progress: Float, etaInSeconds: Long, line: String ->
-                                    runOnUiThread {
-                                        val event = mapOf(
-                                            "status" to "downloading",
-                                            "progress" to progress.toDouble(),
-                                            "eta" to "${etaInSeconds}s",
-                                            "step" to line
-                                        )
-                                        downloadEventSink?.success(event)
+                                    val event = YtDlpEngine.describeProgress(progress, etaInSeconds, line)
+                                    if (event != null) {
+                                        runOnUiThread { downloadEventSink?.success(event) }
                                     }
                                 }
                             )
@@ -210,12 +191,13 @@ class MainActivity : FlutterActivity() {
                             }
                         } catch (e: Exception) {
                             withContext(Dispatchers.Main) {
+                                val message = YtDlpEngine.cleanError(e.message)
                                 val errorEvent = mapOf(
                                     "status" to "error",
-                                    "error" to (e.message ?: "Error desconocido durante la descarga")
+                                    "error" to message
                                 )
                                 downloadEventSink?.success(errorEvent)
-                                result.error("DOWNLOAD_ERROR", e.message, null)
+                                result.error("DOWNLOAD_ERROR", message, null)
                             }
                         } finally {
                             if (activeProcessId == processId) {

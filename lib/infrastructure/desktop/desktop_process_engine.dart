@@ -132,8 +132,6 @@ class DesktopProcessEngine implements IMediaEngine {
       ...jsArgs,
       '--no-playlist',
       '--dump-json',
-      '--extractor-args',
-      'youtube:player_client=android,web',
       url,
     ];
 
@@ -159,7 +157,17 @@ class DesktopProcessEngine implements IMediaEngine {
   }
 
   /// Parsea el mapa de metadatos JSON generado por yt-dlp y construye el modelo inmutable [MediaInfo].
-  static MediaInfo parseMediaInfo(Map<String, dynamic> rawJson, String url) {
+  ///
+  /// - [h264Only]: solo ofrece resoluciones que existan en H.264 (avc1/h264). Los formatos
+  ///   cuyo códec se desconoce (ej. progresivos de Facebook) se conservan. Se usa en Android,
+  ///   donde no se recodifica VP9/AV1 a H.264 para no gastar batería.
+  /// - [maxHeight]: descarta resoluciones por encima de este valor (ej. 1080 en Android).
+  static MediaInfo parseMediaInfo(
+    Map<String, dynamic> rawJson,
+    String url, {
+    bool h264Only = false,
+    int? maxHeight,
+  }) {
     final rawTitle = rawJson['title']?.toString() ?? 'Sin título';
     final title = sanitizeTitle(rawTitle);
     final uploader = (rawJson['uploader'] ?? rawJson['channel'] ?? rawJson['creator'] ?? rawJson['artist'])?.toString();
@@ -173,6 +181,7 @@ class DesktopProcessEngine implements IMediaEngine {
       if (f is Map) {
         final vcodec = f['vcodec']?.toString();
         if (vcodec == 'none') continue; // Omitir streams de solo audio
+        if (h264Only && !_isH264OrUnknown(vcodec)) continue;
 
         int? width = (f['width'] as num?)?.toInt();
         int? height = (f['height'] as num?)?.toInt();
@@ -214,10 +223,15 @@ class DesktopProcessEngine implements IMediaEngine {
           }
         }
 
-        if (standardRes != null && standardRes > 0) {
+        if (standardRes != null && standardRes > 0 && (maxHeight == null || standardRes <= maxHeight)) {
           availableHeights.add(standardRes);
         }
       }
+    }
+
+    // YouTube expone a veces formatos residuales (ej. 72p) que no aportan nada al usuario.
+    if (availableHeights.any((h) => h >= 144)) {
+      availableHeights.removeWhere((h) => h < 144);
     }
 
     final sortedHeights = availableHeights.toList()..sort((a, b) => b.compareTo(a));
@@ -235,35 +249,9 @@ class DesktopProcessEngine implements IMediaEngine {
         label = 'HD ($label)';
       }
 
-      // Cota máxima para admitir tanto orientaciones horizontales (16:9) como verticales (9:16)
-      final maxDim = (h * 16 / 9).round() + 20;
-
-      // Priorizamos H.264 (avc1/h264) y audio AAC (mp4a/aac) para reproducción universal en VLC.
-      // Si la plataforma (ej. Facebook 1080p) solo dispone de AV1 o VP9, recurrimos a ella
-      // y nuestro motor la transcodificará automáticamente a H.264 al concluir la descarga.
-      final formatParts = <String>[
-        // 1. Separate streams con códec H.264 nativo + audio AAC nativo
-        'bv*[height<=$maxDim][width<=$maxDim][vcodec^=avc1]+ba[acodec^=mp4a]',
-        'bv*[height<=$maxDim][width<=$maxDim][vcodec^=avc1]+ba',
-        'bv*[height<=$maxDim][width<=$maxDim][vcodec*=h264]+ba[acodec*=aac]',
-        'bv*[height<=$maxDim][width<=$maxDim][vcodec*=h264]+ba',
-        // 2. Formatos progresivos universales nativos (ej. Facebook HD/SD)
-        if (h >= 720) 'b[format_id=hd]',
-        if (h <= 480) 'b[format_id=sd]',
-        'b[height<=$maxDim][width<=$maxDim][vcodec^=avc1]',
-        'b[height<=$maxDim][width<=$maxDim][vcodec*=h264]',
-        // 3. Fallbacks de la máxima calidad disponible (se transcodificará automáticamente a H.264)
-        'bv*[height<=$maxDim][width<=$maxDim]+ba[acodec^=mp4a]',
-        'bv*[height<=$maxDim][width<=$maxDim]+ba',
-        'b[height<=$maxDim][width<=$maxDim][vcodec!=none]',
-        'bv*+ba',
-        'b[vcodec!=none]',
-      ];
-      final formatString = formatParts.join('/');
-
       videoOptions.add(
         StreamOption(
-          formatId: formatString,
+          formatId: buildVideoFormatSelector(height: h, h264Only: h264Only),
           label: label,
           extension: 'mp4',
           height: h,
@@ -274,17 +262,8 @@ class DesktopProcessEngine implements IMediaEngine {
 
     if (videoOptions.isEmpty) {
       videoOptions.add(
-        const StreamOption(
-          formatId: 'bv*[vcodec^=avc1]+ba[acodec^=mp4a]'
-              '/bv*[vcodec^=avc1]+ba'
-              '/bv*[vcodec*=h264]+ba[acodec*=aac]'
-              '/bv*[vcodec*=h264]+ba'
-              '/b[format_id=hd]'
-              '/b[format_id=sd]'
-              '/b[vcodec^=avc1]'
-              '/b[vcodec*=h264]'
-              '/bv*+ba'
-              '/b[vcodec!=none]',
+        StreamOption(
+          formatId: buildVideoFormatSelector(height: null, h264Only: h264Only),
           label: 'Mejor Calidad Disponible (MP4)',
           extension: 'mp4',
           isAudioOnly: false,
@@ -330,6 +309,54 @@ class DesktopProcessEngine implements IMediaEngine {
       videoOptions: videoOptions,
       audioOptions: audioOptions,
     );
+  }
+
+  static bool _isH264OrUnknown(String? vcodec) {
+    if (vcodec == null || vcodec.trim().isEmpty) return true;
+    final c = vcodec.toLowerCase();
+    return c.startsWith('avc') || c.contains('h264');
+  }
+
+  /// Construye la cadena `-f` de yt-dlp para una altura dada ([height] nulo = mejor disponible).
+  ///
+  /// Siempre se prioriza H.264 (avc1/h264) + AAC (mp4a) para reproducción universal.
+  /// - Escritorio ([h264Only] = false): si la plataforma solo ofrece VP9/AV1 a esa altura
+  ///   se descarga igualmente y el motor la recodifica a H.264 al finalizar.
+  /// - Android ([h264Only] = true): nunca se eligen VP9/AV1; solo H.264, progresivos con
+  ///   códec desconocido u otros códecs reproducibles sin recodificar.
+  @visibleForTesting
+  static String buildVideoFormatSelector({required int? height, required bool h264Only}) {
+    // Cota máxima para admitir tanto orientaciones horizontales (16:9) como verticales (9:16)
+    final maxDim = height == null ? null : (height * 16 / 9).round() + 20;
+    final dim = maxDim == null ? '' : '[height<=$maxDim][width<=$maxDim]';
+    final dimOrUnknown = maxDim == null ? '' : '[height<=?$maxDim][width<=?$maxDim]';
+
+    final parts = <String>[
+      // 1. Pistas separadas con H.264 nativo + audio AAC nativo
+      'bv*$dim[vcodec^=avc1]+ba[acodec^=mp4a]',
+      'bv*$dim[vcodec^=avc1]+ba',
+      'bv*$dim[vcodec*=h264]+ba[acodec*=aac]',
+      'bv*$dim[vcodec*=h264]+ba',
+      // 2. Formatos progresivos universales (ej. Facebook HD/SD)
+      if (height == null || height >= 720) 'b[format_id=hd]',
+      if (height == null || height <= 480) 'b[format_id=sd]',
+      'b$dim[vcodec^=avc1]',
+      'b$dim[vcodec*=h264]',
+      // 3. Fallbacks
+      if (h264Only) ...[
+        'b$dimOrUnknown[vcodec!*=?vp][vcodec!*=?av01][vcodec!=?none]',
+        'b',
+      ] else ...[
+        // Máxima calidad disponible (se recodificará a H.264 al concluir)
+        'bv*$dim+ba[acodec^=mp4a]',
+        'bv*$dim+ba',
+        'b$dim[vcodec!=none]',
+        'bv*+ba',
+        'b[vcodec!=none]',
+      ],
+    ];
+    // LinkedHashSet elimina duplicados conservando el orden de prioridad.
+    return parts.toSet().join('/');
   }
 
   static String sanitizeTitle(String rawTitle) {
@@ -496,8 +523,6 @@ class DesktopProcessEngine implements IMediaEngine {
       '',
       '--progress-template',
       'download:%(progress._percent_str)s|%(progress._speed_str)s|%(progress._eta_str)s|%(progress._total_bytes_str)s',
-      '--extractor-args',
-      'youtube:player_client=android,web',
       '-P',
       downloadDir,
       '-o',
