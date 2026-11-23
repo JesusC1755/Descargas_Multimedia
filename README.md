@@ -12,7 +12,7 @@
 
 **Aplicación de escritorio y multiplataforma moderna, reactiva y elegante para la extracción, conversión y descarga de video y audio con arquitectura desacoplada y topología 100% local (Zero-Server).**
 
-[Características](#-características-principales) • [Arquitectura](#-arquitectura-del-sistema) • [Stack Tecnológico](#-stack-tecnológico-y-herramientas) • [Canvas y UI](#-canvas-y-experiencia-visual-de-usuario) • [Dockerización](#-estrategia-de-dockerización-y-ejecución-aislada) • [Distribución Nativa](#-distribución-y-empaquetado-nativo-linux) • [Guía de Desarrollo](#-instalación-y-desarrollo-local)
+[Características](#-características-principales) • [Arquitectura](#-arquitectura-del-sistema) • [Stack Tecnológico](#-stack-tecnológico-y-herramientas) • [Android](#-android) • [Canvas y UI](#-canvas-y-experiencia-visual-de-usuario) • [Dockerización](#-estrategia-de-dockerización-y-ejecución-aislada) • [Distribución Nativa](#-distribución-y-empaquetado-nativo-linux) • [Guía de Desarrollo](#-instalación-y-desarrollo-local)
 
 </div>
 
@@ -27,6 +27,7 @@
   * **Solo Audio:** Extracción dedicada a contenedores y códecs de alta fidelidad (`MP3` a 320 kbps, `FLAC`, `M4A/AAC`, `Opus`).
 * ⚡ **Streaming Reactivo en Tiempo Real:** Barra de progreso fluida con porcentaje exacto, velocidad de transferencia (`MB/s`), tiempo estimado de finalización (`ETA`) y etapa de multiplexación (`muxing` con FFmpeg).
 * 🛡️ **Validación y Sanitización Robusta:** Detección de URLs maliciosas o malformadas, eliminación de parámetros espía de seguimiento (`utm_*`, `si=`, `fbclid`) antes de invocar subprocesos.
+* 📱 **Android:** motor nativo `youtubedl-android`, descargas en segundo plano con notificación y guardado en cualquier carpeta (incluida la tarjeta SD) vía MediaStore/SAF.
 * 📋 **Integración de Escritorio:** Pegado directo desde el portapapeles con un clic (`Ctrl + V`), atajo de teclado global para iniciar análisis (`Enter`) y apertura directa de la carpeta de descargas del sistema.
 * 📊 **Observabilidad y Depuración Integrada:** Monitor de logs en memoria en tiempo real potenciado por **Talker**, con visor interactivo de excepciones y botón para copiar diagnósticos al portapapeles.
 
@@ -51,10 +52,11 @@ El proyecto implementa los principios de **Clean Architecture** y el patrón **H
        ┌────────────────▼──────────────┐ ┌──────────────▼──────────────┐
        │     Infrastructure (Desktop)  │ │   Infrastructure (Android)  │
        │   DesktopProcessEngine        │ │   AndroidNativeEngine       │
-       │   • Subprocesos dart:io       │ │   (Planificado: Chaquopy +  │
-       │   • Pipes async yt-dlp        │ │    FFmpeg-Kit JNI)          │
-       │   • Muxing FFmpeg             │ │                             │
-       │   • Node.js EJS Runtime       │ │                             │
+       │   • Subprocesos dart:io       │ │   • MethodChannel/EventCh.  │
+       │   • Pipes async yt-dlp        │ │   • youtubedl-android       │
+       │   • Muxing FFmpeg             │ │     (yt-dlp+FFmpeg+QuickJS) │
+       │   • Node.js EJS Runtime       │ │   • DownloadService         │
+       │                               │ │   • MediaStore / SAF        │
        └───────────────────────────────┘ └─────────────────────────────┘
 ```
 
@@ -79,8 +81,32 @@ El proyecto implementa los principios de **Clean Architecture** y el patrón **H
 | **Motor de Extracción** | **`yt-dlp` (Standalone)** | Extractor líder de la industria, actualizado permanentemente contra cambios en los tokens de firma (`n-sig`) de las plataformas. |
 | **Motor Multimedia** | **`FFmpeg` + `ffprobe`** | Mezcla (multiplexado) sin pérdida de calidad (`-c copy`) de pistas de video DASH y streams de audio, además de transcodificación a MP3. |
 | **Resolución JavaScript** | **`Node.js` (EJS Runtime)** | Runtime ligero inyectado a `yt-dlp` vía `--js-runtimes node` para interpretar algoritmos de firma JavaScript ofuscados de YouTube. |
+| **Motor Android** | **`youtubedl-android`** | yt-dlp, FFmpeg y QuickJS empaquetados para Android, invocados desde Kotlin vía MethodChannel. |
+| **Preferencias** | **`shared_preferences`** | Recuerda la carpeta de destino entre sesiones. |
 | **Logging y Diagnóstico**| **`talker_flutter`** | Sistema de observabilidad centralizado que captura eventos de ciclo de vida, excepciones en zona segura (`runZonedGuarded`) y errores de subprocesos. |
 | **Aislamiento / Deploy** | **Docker Multi-Stage** | Empaquetado minimalista (< 300 MB) con aceleración gráfica por hardware Mesa DRI (`/dev/dri`) y servidor gráfico X11. |
+
+---
+
+## 📱 Android
+
+La app usa el mismo dominio y la misma UI; solo cambia el adaptador (`AndroidNativeEngine` + código Kotlin en `android/app/src/main/kotlin/`).
+
+* **Motor:** [`youtubedl-android`](https://github.com/JunkFood02/youtubedl-android) ejecuta yt-dlp con Python embebido, FFmpeg y QuickJS. yt-dlp se actualiza en segundo plano como máximo una vez cada 24 h.
+* **YouTube rápido:** se usa el cliente `visionos`, que no exige resolver el desafío JavaScript con QuickJS (análisis de ~50 s a ~14 s). Si falla, se reintenta con los clientes por defecto de yt-dlp.
+* **Calidades:** solo H.264 hasta 1080p, para no recodificar VP9/AV1 en el teléfono.
+* **Descarga sin repetir el análisis:** el JSON del análisis se reutiliza con `--load-info-json` (vigencia 3 h).
+* **Almacenamiento (scoped storage):** yt-dlp descarga en una carpeta privada de la app y luego el archivo se exporta:
+  * carpeta predeterminada → `Download/` mediante MediaStore;
+  * carpeta elegida por el usuario (incluida la SD) → SAF con permiso persistente.
+* **Segundo plano:** `DownloadService` (servicio en primer plano `dataSync`) muestra el progreso en una notificación con botón *Cancelar*; al volver a abrir la app se recupera el progreso.
+
+### Compilar e instalar
+```bash
+flutter build apk --debug                 # o --release
+adb devices                               # si aparece dos veces el mismo teléfono, usa -s
+adb -s <IP:puerto> install -r build/app/outputs/flutter-apk/app-debug.apk
+```
 
 ---
 
@@ -210,6 +236,7 @@ lib/
 │
 ├── domain/                                  # Capa de Dominio (Dart puro, agnóstico al SO)
 │   ├── models/
+│   │   ├── download_destination.dart        # Carpeta de destino (ruta visible + URI SAF en Android)
 │   │   ├── download_progress.dart           # Estado inmutable del avance (% avance, KB/s, ETA)
 │   │   ├── media_info.dart                  # Metadatos del contenido (título, duración, formatos)
 │   │   └── stream_option.dart               # Opciones seleccionables de video y audio
@@ -217,8 +244,11 @@ lib/
 │       └── media_engine_port.dart           # Interfaz abstracta IMediaEngine
 │
 ├── infrastructure/                          # Capa de Infraestructura (Adaptadores)
-│   └── desktop/
-│       └── desktop_process_engine.dart      # Motor CLI: subprocesos yt-dlp + FFmpeg + Node.js
+│   ├── android/
+│   │   └── android_native_engine.dart       # Puente con el motor nativo (MethodChannel/EventChannel)
+│   ├── desktop/
+│   │   └── desktop_process_engine.dart      # Motor CLI: subprocesos yt-dlp + FFmpeg + Node.js
+│   └── media_engine_factory.dart            # Elige el motor según la plataforma
 │
 ├── presentation/                            # Capa de Presentación (Flutter UI)
 │   ├── screens/
@@ -227,10 +257,18 @@ lib/
 │       ├── ambient_mesh_background.dart     # Fondo animado CustomPainter (Canvas GPU)
 │       ├── download_progress_card.dart      # Monitor de descarga activa y visor de errores
 │       ├── media_preview_card.dart          # Tarjeta con miniatura y metadatos del autor
+│       ├── media_preview_skeleton.dart      # Esqueleto de carga durante el análisis
 │       ├── quality_selector_card.dart       # Selector de resolución y códecs de audio
 │       └── url_input_card.dart              # Campo de texto para URL con pegado inteligente
 │
 └── main.dart                                # Punto de entrada y captura de errores en zona segura
+
+android/app/src/main/kotlin/com/example/media_downloader/
+├── MainActivity.kt                          # Canales con Flutter, selector de carpetas y permisos
+├── YtDlpEngine.kt                           # Inicialización, actualización, análisis y progreso de yt-dlp
+├── DownloadService.kt                       # Servicio en primer plano que ejecuta la descarga
+├── DownloadStateHolder.kt                   # Estado compartido de la descarga (sobrevive a la Activity)
+└── MediaExporter.kt                         # Exportación a MediaStore/SAF y apertura de carpetas
 ```
 
 ---
