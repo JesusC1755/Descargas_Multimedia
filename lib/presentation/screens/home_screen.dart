@@ -80,6 +80,20 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     } catch (_) {}
 
+    if (Platform.isAndroid) {
+      final androidCandidates = [
+        Directory('/storage/emulated/0/Download'),
+        Directory('/storage/emulated/0/Downloads'),
+      ];
+      for (final d in androidCandidates) {
+        if (d.existsSync()) {
+          if (mounted) setState(() => _downloadDirectory = d.path);
+          talker.info('Carpeta de descargas detectada en Android: ${d.path}');
+          return;
+        }
+      }
+    }
+
     final home = Platform.environment['HOME'] ?? '';
     final defaultDir = Directory('$home/Descargas');
     if (await defaultDir.exists()) {
@@ -99,17 +113,31 @@ class _HomeScreenState extends State<HomeScreen> {
         await Process.run('explorer.exe', [_downloadDirectory]);
       } else if (Platform.isMacOS) {
         await Process.run('open', [_downloadDirectory]);
+      } else if (Platform.isAndroid) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Guardado en: $_downloadDirectory'),
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 3),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+          );
+        }
       }
     } catch (e) {
       talker.warning('No se pudo abrir el explorador de archivos: $e');
     }
   }
 
-  Future<void> _selectDownloadDirectory() async {
-    String? newPath;
+  static const MethodChannel _folderChannel = MethodChannel('com.example.media_downloader/folder_picker');
 
+  Future<String?> _openNativeFolderPicker() async {
     try {
-      if (Platform.isLinux) {
+      if (Platform.isAndroid) {
+        final path = await _folderChannel.invokeMethod<String>('pickFolder');
+        return path;
+      } else if (Platform.isLinux) {
         final result = await Process.run('zenity', [
           '--file-selection',
           '--directory',
@@ -118,25 +146,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ]);
         if (result.exitCode == 0) {
           final out = result.stdout.toString().trim();
-          if (out.isNotEmpty && Directory(out).existsSync()) {
-            newPath = out;
-          }
-        } else if (result.exitCode == 1) {
-          // El usuario canceló la selección nativa
-          return;
-        }
-      } else if (Platform.isMacOS) {
-        final result = await Process.run('osascript', [
-          '-e',
-          'POSIX path of (choose folder with prompt "Seleccionar carpeta de descargas")',
-        ]);
-        if (result.exitCode == 0) {
-          final out = result.stdout.toString().trim();
-          if (out.isNotEmpty && Directory(out).existsSync()) {
-            newPath = out;
-          }
-        } else {
-          return;
+          if (out.isNotEmpty && Directory(out).existsSync()) return out;
         }
       } else if (Platform.isWindows) {
         final script =
@@ -147,121 +157,201 @@ class _HomeScreenState extends State<HomeScreen> {
         final result = await Process.run('powershell', ['-NoProfile', '-Command', script]);
         if (result.exitCode == 0) {
           final out = result.stdout.toString().trim();
-          if (out.isNotEmpty && Directory(out).existsSync()) {
-            newPath = out;
-          }
+          if (out.isNotEmpty && Directory(out).existsSync()) return out;
+        }
+      } else if (Platform.isMacOS) {
+        final result = await Process.run('osascript', [
+          '-e',
+          'POSIX path of (choose folder with prompt "Seleccionar carpeta de descargas")',
+        ]);
+        if (result.exitCode == 0) {
+          final out = result.stdout.toString().trim();
+          if (out.isNotEmpty && Directory(out).existsSync()) return out;
         }
       }
     } catch (e) {
-      talker.warning('Selector nativo no disponible o error: $e');
+      talker.warning('Error en selector nativo: $e');
     }
-
-    if (newPath != null && mounted) {
-      setState(() => _downloadDirectory = newPath!);
-      talker.info('Carpeta de descargas actualizada: $newPath');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Carpeta de descarga cambiada a: $newPath'),
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 2),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        ),
-      );
-      return;
-    }
-
-    if (!mounted) return;
-    await _showCustomFolderDialog();
+    return null;
   }
 
-  Future<void> _showCustomFolderDialog() async {
-    final controller = TextEditingController(text: _downloadDirectory);
-    final home = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '';
+  Future<void> _selectDownloadDirectory() async {
+    String currentSelected = _downloadDirectory;
 
-    final commonFolders = <String, String>{
-      'Descargas': Directory('$home/Descargas').existsSync() ? '$home/Descargas' : '$home/Downloads',
-      'Videos': Directory('$home/Videos').existsSync() ? '$home/Videos' : '$home/Vídeos',
-      'Música': Directory('$home/Música').existsSync() ? '$home/Música' : '$home/Music',
-      'Documentos': Directory('$home/Documentos').existsSync() ? '$home/Documentos' : '$home/Documents',
-      'Escritorio': Directory('$home/Escritorio').existsSync() ? '$home/Escritorio' : '$home/Desktop',
-    };
-
-    await showDialog<void>(
+    await showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF1E1E24),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
       builder: (ctx) {
-        final theme = Theme.of(ctx);
-        return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-          title: Row(
-            children: [
-              Icon(Icons.folder_outlined, color: theme.colorScheme.primary),
-              const SizedBox(width: 10),
-              const Text('Elegir Carpeta de Descargas'),
-            ],
-          ),
-          content: SizedBox(
-            width: 480,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                TextField(
-                  controller: controller,
-                  decoration: const InputDecoration(
-                    labelText: 'Ruta de la carpeta',
-                    hintText: '/home/usuario/Descargas',
-                    prefixIcon: Icon(Icons.folder_open_rounded),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Ubicaciones comunes:',
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 6,
-                  children: commonFolders.entries.map((entry) {
-                    return ActionChip(
-                      avatar: const Icon(Icons.folder_special_rounded, size: 14),
-                      label: Text(entry.key),
-                      onPressed: () {
-                        controller.text = entry.value;
-                      },
-                    );
-                  }).toList(),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Cancelar'),
-            ),
-            FilledButton(
-              onPressed: () {
-                final text = controller.text.trim();
-                if (text.isNotEmpty && Directory(text).existsSync()) {
-                  setState(() => _downloadDirectory = text);
-                  Navigator.of(ctx).pop();
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: const Text('La carpeta especificada no existe en el sistema'),
-                      backgroundColor: theme.colorScheme.error,
-                      behavior: SnackBarBehavior.floating,
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            final theme = Theme.of(context);
+            final folderName = currentSelected.isNotEmpty
+                ? currentSelected.split(Platform.pathSeparator).last
+                : 'Descargas';
+            final storageLabel = currentSelected.contains('/storage/emulated/0')
+                ? 'Almacenamiento interno'
+                : (currentSelected.contains('/storage/') ? 'Tarjeta de memoria' : 'Almacenamiento local');
+
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        margin: const EdgeInsets.only(bottom: 18),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
                     ),
-                  );
-                }
-              },
-              child: const Text('Guardar'),
-            ),
-          ],
+                    Text(
+                      'Selección de carpetas',
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+
+                    // Tarjeta de la carpeta seleccionada
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.05),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: theme.colorScheme.primary.withValues(alpha: 0.5),
+                          width: 1.2,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.folder_rounded, color: theme.colorScheme.primary, size: 28),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  folderName,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15,
+                                    color: Colors.white,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  storageLabel,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.white.withValues(alpha: 0.6),
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  currentSelected,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontFamily: 'monospace',
+                                    color: Colors.white.withValues(alpha: 0.4),
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.primary.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.check_circle_rounded, size: 14, color: theme.colorScheme.primary),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'Activado',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: theme.colorScheme.primary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 22),
+
+                    // Botón para abrir el explorador de archivos nativo del celular
+                    OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        side: BorderSide(color: Colors.white.withValues(alpha: 0.2)),
+                      ),
+                      icon: const Icon(Icons.add_circle_outline_rounded, size: 20),
+                      label: const Text(
+                        'Agregar carpeta o almacenamiento',
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                      ),
+                      onPressed: () async {
+                        final picked = await _openNativeFolderPicker();
+                        if (picked != null && picked.isNotEmpty) {
+                          setSheetState(() => currentSelected = picked);
+                          if (mounted) {
+                            setState(() => _downloadDirectory = picked);
+                          }
+                          talker.info('Carpeta seleccionada desde explorador nativo: $picked');
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Botón Guardar
+                    FilledButton(
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                      onPressed: () {
+                        setState(() => _downloadDirectory = currentSelected);
+                        Navigator.of(ctx).pop();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Carpeta de destino: $currentSelected'),
+                            behavior: SnackBarBehavior.floating,
+                            duration: const Duration(seconds: 2),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                        );
+                      },
+                      child: const Text(
+                        'Guardar',
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
         );
       },
     );
