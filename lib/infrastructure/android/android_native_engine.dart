@@ -20,15 +20,11 @@ class AndroidNativeEngine implements IMediaEngine {
   /// así que solo se ofrecen resoluciones con H.264 nativo, hasta 1080p.
   static const int maxVideoHeight = 1080;
 
-  /// Cliente de YouTube que usa yt-dlp en Android. `visionos` no exige el desafío
-  /// JavaScript que el teléfono resuelve con QuickJS: medido en un NLA-LX3, el análisis
-  /// baja de ~52 s a ~13 s con las mismas calidades. Si falla, el lado nativo reintenta
-  /// con los clientes por defecto de yt-dlp.
-  static const String defaultYoutubeClient = 'visionos';
-
-  /// Cliente en uso (`youtube:player_client=…`); null = clientes por defecto de yt-dlp.
-  /// En depuración se puede cambiar desde la UI para comparar.
-  String? youtubePlayerClient = defaultYoutubeClient;
+  /// Cliente de YouTube que usa yt-dlp en Android (`youtube:player_client=…`). `visionos`
+  /// no exige el desafío JavaScript que el teléfono resuelve con QuickJS: el análisis baja
+  /// de ~52 s a ~14 s con las mismas calidades. Si falla, el lado nativo reintenta con los
+  /// clientes por defecto de yt-dlp.
+  static const String youtubePlayerClient = 'visionos';
 
   StreamSubscription? _activeSubscription;
   bool _isInit = false;
@@ -71,7 +67,7 @@ class AndroidNativeEngine implements IMediaEngine {
       });
       talker.info(
         'Análisis en Android: ${(stopwatch.elapsedMilliseconds / 1000).toStringAsFixed(1)} s '
-        '(cliente YouTube: ${youtubePlayerClient ?? 'por defecto'})',
+        '(cliente YouTube: $youtubePlayerClient)',
       );
 
       final debugLines = (result?['debug'] as List?)?.cast<String>() ?? const [];
