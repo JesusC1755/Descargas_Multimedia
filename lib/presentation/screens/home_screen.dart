@@ -14,6 +14,7 @@ import '../../domain/models/media_info.dart';
 import '../../domain/models/stream_option.dart';
 import '../../domain/ports/media_engine_port.dart';
 import '../../infrastructure/desktop/desktop_process_engine.dart';
+import '../../infrastructure/media_engine_factory.dart';
 import '../widgets/ambient_mesh_background.dart';
 import '../widgets/download_progress_card.dart';
 import '../widgets/media_preview_card.dart';
@@ -34,7 +35,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _urlController = TextEditingController();
-  final IMediaEngine _engine = DesktopProcessEngine();
+  final IMediaEngine _engine = MediaEngineFactory.create();
 
   bool _isAnalyzing = false;
   bool _isDownloading = false;

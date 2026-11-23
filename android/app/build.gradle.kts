@@ -19,7 +19,7 @@ android {
         applicationId = "com.example.media_downloader"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        minSdk = 24
         targetSdk = flutter.targetSdkVersion
         // Uses the version code from pubspec.yaml. When using split APKs, 1000 * ABI_VERSION
         // is added automatically by Flutter. (https://developer.android.com/studio/build/configure-apk-splits#configure-APK-versions)
@@ -27,6 +27,14 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        ndk {
+            // Arquitectura de 64 bits para dispositivos móviles modernos (NLA LX3 / ARM64).
+            // Mantener solo arm64-v8a reduce el APK de 184 MB a ~40-45 MB (igual que el APK de Seal).
+            // Para generar APKs para otras arquitecturas o distribución universal se usa `flutter build apk --split-per-abi`.
+            abiFilters.clear()
+            abiFilters.add("arm64-v8a")
+        }
     }
 
     buildTypes {
@@ -34,6 +42,25 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+        }
+    }
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+            excludes.addAll(
+                setOf(
+                    "lib/armeabi-v7a/**",
+                    "lib/x86/**",
+                    "lib/x86_64/**"
+                )
+            )
+            keepDebugSymbols.addAll(
+                setOf(
+                    "**/libpython.zip.so",
+                    "**/libffmpeg.zip.so"
+                )
+            )
         }
     }
 }
@@ -46,4 +73,10 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
+    implementation("io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0")
 }

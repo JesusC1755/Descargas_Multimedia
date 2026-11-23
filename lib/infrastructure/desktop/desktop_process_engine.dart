@@ -36,6 +36,8 @@ class DesktopProcessEngine implements IMediaEngine {
     unicode: true,
   );
 
+  static final RegExp emojiRegex = _emojiRegex;
+
   String _resolveToolExecutable(String baseName) {
     final isWin = Platform.isWindows;
     final exeName = isWin ? '$baseName.exe' : baseName;
@@ -130,6 +132,8 @@ class DesktopProcessEngine implements IMediaEngine {
       ...jsArgs,
       '--no-playlist',
       '--dump-json',
+      '--extractor-args',
+      'youtube:player_client=android,web',
       url,
     ];
 
@@ -147,183 +151,188 @@ class DesktopProcessEngine implements IMediaEngine {
         throw Exception('Estructura de metadatos inesperada de yt-dlp');
       }
 
-      final rawTitle = rawJson['title']?.toString() ?? 'Sin título';
-      final title = _sanitizeTitle(rawTitle);
-      final uploader = (rawJson['uploader'] ?? rawJson['channel'] ?? rawJson['creator'] ?? rawJson['artist'])?.toString();
-      final thumbnail = rawJson['thumbnail']?.toString();
-      final duration = (rawJson['duration'] as num?)?.round();
-
-      final formats = rawJson['formats'] as List<dynamic>? ?? [];
-
-      final Set<int> availableHeights = {};
-      for (final f in formats) {
-        if (f is Map) {
-          final vcodec = f['vcodec']?.toString();
-          if (vcodec == 'none') continue; // Omitir streams de solo audio
-
-          int? width = (f['width'] as num?)?.toInt();
-          int? height = (f['height'] as num?)?.toInt();
-
-          // Si el extractor no incluye dimensiones directamente (común en Facebook SD/HD, Vimeo, etc.),
-          // inferir a partir de resolution, format_note o format_id
-          if (height == null || height <= 0 || width == null || width <= 0) {
-            final res = f['resolution']?.toString() ?? '';
-            final match = RegExp(r'(\d+)x(\d+)').firstMatch(res);
-            if (match != null) {
-              width ??= int.tryParse(match.group(1)!);
-              height ??= int.tryParse(match.group(2)!);
-            }
-          }
-
-          // Para videos verticales (ej. 1080x1920 en Reels/Shorts), el estándar visual es el lado menor (1080p).
-          // Para videos horizontales (ej. 1920x1080), también es el lado menor (1080p).
-          int? standardRes;
-          if (width != null && height != null && width > 0 && height > 0) {
-            standardRes = width < height ? width : height;
-          } else {
-            standardRes = height;
-          }
-
-          if (standardRes == null || standardRes <= 0) {
-            final note = (f['format_note']?.toString() ?? f['format_id']?.toString() ?? '').toLowerCase();
-            if (note.contains('4k') || note.contains('2160')) {
-              standardRes = 2160;
-            } else if (note.contains('2k') || note.contains('1440')) {
-              standardRes = 1440;
-            } else if (note.contains('1080') || note.contains('fhd')) {
-              standardRes = 1080;
-            } else if (note.contains('720') || note == 'hd' || note.contains('hd')) {
-              standardRes = 720;
-            } else if (note.contains('480') || note == 'sd' || note.contains('sd')) {
-              standardRes = 480;
-            } else if (note.contains('360')) {
-              standardRes = 360;
-            }
-          }
-
-          if (standardRes != null && standardRes > 0) {
-            availableHeights.add(standardRes);
-          }
-        }
-      }
-
-      final sortedHeights = availableHeights.toList()..sort((a, b) => b.compareTo(a));
-
-      final videoOptions = <StreamOption>[];
-      for (final h in sortedHeights) {
-        String label = '${h}p';
-        if (h >= 2160) {
-          label = '4K ($label)';
-        } else if (h >= 1440) {
-          label = '2K QHD ($label)';
-        } else if (h >= 1080) {
-          label = 'Full HD ($label)';
-        } else if (h >= 720) {
-          label = 'HD ($label)';
-        }
-
-        // Cota máxima para admitir tanto orientaciones horizontales (16:9) como verticales (9:16)
-        final maxDim = (h * 16 / 9).round() + 20;
-
-        // Priorizamos H.264 (avc1/h264) y audio AAC (mp4a/aac) para reproducción universal en VLC.
-        // Si la plataforma (ej. Facebook 1080p) solo dispone de AV1 o VP9, recurrimos a ella
-        // y nuestro motor la transcodificará automáticamente a H.264 al concluir la descarga.
-        final formatParts = <String>[
-          // 1. Separate streams con códec H.264 nativo + audio AAC nativo
-          'bv*[height<=$maxDim][width<=$maxDim][vcodec^=avc1]+ba[acodec^=mp4a]',
-          'bv*[height<=$maxDim][width<=$maxDim][vcodec^=avc1]+ba',
-          'bv*[height<=$maxDim][width<=$maxDim][vcodec*=h264]+ba[acodec*=aac]',
-          'bv*[height<=$maxDim][width<=$maxDim][vcodec*=h264]+ba',
-          // 2. Formatos progresivos universales nativos (ej. Facebook HD/SD)
-          if (h >= 720) 'b[format_id=hd]',
-          if (h <= 480) 'b[format_id=sd]',
-          'b[height<=$maxDim][width<=$maxDim][vcodec^=avc1]',
-          'b[height<=$maxDim][width<=$maxDim][vcodec*=h264]',
-          // 3. Fallbacks de la máxima calidad disponible (se transcodificará automáticamente a H.264)
-          'bv*[height<=$maxDim][width<=$maxDim]+ba[acodec^=mp4a]',
-          'bv*[height<=$maxDim][width<=$maxDim]+ba',
-          'b[height<=$maxDim][width<=$maxDim][vcodec!=none]',
-          'bv*+ba',
-          'b[vcodec!=none]',
-        ];
-        final formatString = formatParts.join('/');
-
-        videoOptions.add(
-          StreamOption(
-            formatId: formatString,
-            label: label,
-            extension: 'mp4',
-            height: h,
-            isAudioOnly: false,
-          ),
-        );
-      }
-
-      if (videoOptions.isEmpty) {
-        videoOptions.add(
-          const StreamOption(
-            formatId: 'bv*[vcodec^=avc1]+ba[acodec^=mp4a]'
-                '/bv*[vcodec^=avc1]+ba'
-                '/bv*[vcodec*=h264]+ba[acodec*=aac]'
-                '/bv*[vcodec*=h264]+ba'
-                '/b[format_id=hd]'
-                '/b[format_id=sd]'
-                '/b[vcodec^=avc1]'
-                '/b[vcodec*=h264]'
-                '/bv*+ba'
-                '/b[vcodec!=none]',
-            label: 'Mejor Calidad Disponible (MP4)',
-            extension: 'mp4',
-            isAudioOnly: false,
-          ),
-        );
-      }
-
-      final audioOptions = const <StreamOption>[
-        StreamOption(
-          formatId: 'bestaudio',
-          label: 'MP3',
-          extension: 'mp3',
-          isAudioOnly: true,
-        ),
-        StreamOption(
-          formatId: 'bestaudio[ext=m4a]/bestaudio',
-          label: 'M4A',
-          extension: 'm4a',
-          isAudioOnly: true,
-        ),
-        StreamOption(
-          formatId: 'bestaudio',
-          label: 'FLAC',
-          extension: 'flac',
-          isAudioOnly: true,
-        ),
-        StreamOption(
-          formatId: 'bestaudio',
-          label: 'Opus',
-          extension: 'opus',
-          isAudioOnly: true,
-        ),
-      ];
-
-      talker.info('Análisis completado: "$title" (${videoOptions.length} calidades de video)');
-
-      return MediaInfo(
-        url: url,
-        title: title,
-        uploader: uploader,
-        thumbnailUrl: thumbnail,
-        durationSeconds: duration,
-        videoOptions: videoOptions,
-        audioOptions: audioOptions,
-      );
+      return parseMediaInfo(rawJson, url);
     } catch (e, st) {
       talker.error('Error parseando JSON de metadatos de yt-dlp', e, st);
       rethrow;
     }
   }
 
-  String _sanitizeTitle(String rawTitle) {
+  /// Parsea el mapa de metadatos JSON generado por yt-dlp y construye el modelo inmutable [MediaInfo].
+  static MediaInfo parseMediaInfo(Map<String, dynamic> rawJson, String url) {
+    final rawTitle = rawJson['title']?.toString() ?? 'Sin título';
+    final title = sanitizeTitle(rawTitle);
+    final uploader = (rawJson['uploader'] ?? rawJson['channel'] ?? rawJson['creator'] ?? rawJson['artist'])?.toString();
+    final thumbnail = rawJson['thumbnail']?.toString();
+    final duration = (rawJson['duration'] as num?)?.round();
+
+    final formats = rawJson['formats'] as List<dynamic>? ?? [];
+
+    final Set<int> availableHeights = {};
+    for (final f in formats) {
+      if (f is Map) {
+        final vcodec = f['vcodec']?.toString();
+        if (vcodec == 'none') continue; // Omitir streams de solo audio
+
+        int? width = (f['width'] as num?)?.toInt();
+        int? height = (f['height'] as num?)?.toInt();
+
+        // Si el extractor no incluye dimensiones directamente (común en Facebook SD/HD, Vimeo, etc.),
+        // inferir a partir de resolution, format_note o format_id
+        if (height == null || height <= 0 || width == null || width <= 0) {
+          final res = f['resolution']?.toString() ?? '';
+          final match = RegExp(r'(\d+)x(\d+)').firstMatch(res);
+          if (match != null) {
+            width ??= int.tryParse(match.group(1)!);
+            height ??= int.tryParse(match.group(2)!);
+          }
+        }
+
+        // Para videos verticales (ej. 1080x1920 en Reels/Shorts), el estándar visual es el lado menor (1080p).
+        // Para videos horizontales (ej. 1920x1080), también es el lado menor (1080p).
+        int? standardRes;
+        if (width != null && height != null && width > 0 && height > 0) {
+          standardRes = width < height ? width : height;
+        } else {
+          standardRes = height;
+        }
+
+        if (standardRes == null || standardRes <= 0) {
+          final note = (f['format_note']?.toString() ?? f['format_id']?.toString() ?? '').toLowerCase();
+          if (note.contains('4k') || note.contains('2160')) {
+            standardRes = 2160;
+          } else if (note.contains('2k') || note.contains('1440')) {
+            standardRes = 1440;
+          } else if (note.contains('1080') || note.contains('fhd')) {
+            standardRes = 1080;
+          } else if (note.contains('720') || note == 'hd' || note.contains('hd')) {
+            standardRes = 720;
+          } else if (note.contains('480') || note == 'sd' || note.contains('sd')) {
+            standardRes = 480;
+          } else if (note.contains('360')) {
+            standardRes = 360;
+          }
+        }
+
+        if (standardRes != null && standardRes > 0) {
+          availableHeights.add(standardRes);
+        }
+      }
+    }
+
+    final sortedHeights = availableHeights.toList()..sort((a, b) => b.compareTo(a));
+
+    final videoOptions = <StreamOption>[];
+    for (final h in sortedHeights) {
+      String label = '${h}p';
+      if (h >= 2160) {
+        label = '4K ($label)';
+      } else if (h >= 1440) {
+        label = '2K QHD ($label)';
+      } else if (h >= 1080) {
+        label = 'Full HD ($label)';
+      } else if (h >= 720) {
+        label = 'HD ($label)';
+      }
+
+      // Cota máxima para admitir tanto orientaciones horizontales (16:9) como verticales (9:16)
+      final maxDim = (h * 16 / 9).round() + 20;
+
+      // Priorizamos H.264 (avc1/h264) y audio AAC (mp4a/aac) para reproducción universal en VLC.
+      // Si la plataforma (ej. Facebook 1080p) solo dispone de AV1 o VP9, recurrimos a ella
+      // y nuestro motor la transcodificará automáticamente a H.264 al concluir la descarga.
+      final formatParts = <String>[
+        // 1. Separate streams con códec H.264 nativo + audio AAC nativo
+        'bv*[height<=$maxDim][width<=$maxDim][vcodec^=avc1]+ba[acodec^=mp4a]',
+        'bv*[height<=$maxDim][width<=$maxDim][vcodec^=avc1]+ba',
+        'bv*[height<=$maxDim][width<=$maxDim][vcodec*=h264]+ba[acodec*=aac]',
+        'bv*[height<=$maxDim][width<=$maxDim][vcodec*=h264]+ba',
+        // 2. Formatos progresivos universales nativos (ej. Facebook HD/SD)
+        if (h >= 720) 'b[format_id=hd]',
+        if (h <= 480) 'b[format_id=sd]',
+        'b[height<=$maxDim][width<=$maxDim][vcodec^=avc1]',
+        'b[height<=$maxDim][width<=$maxDim][vcodec*=h264]',
+        // 3. Fallbacks de la máxima calidad disponible (se transcodificará automáticamente a H.264)
+        'bv*[height<=$maxDim][width<=$maxDim]+ba[acodec^=mp4a]',
+        'bv*[height<=$maxDim][width<=$maxDim]+ba',
+        'b[height<=$maxDim][width<=$maxDim][vcodec!=none]',
+        'bv*+ba',
+        'b[vcodec!=none]',
+      ];
+      final formatString = formatParts.join('/');
+
+      videoOptions.add(
+        StreamOption(
+          formatId: formatString,
+          label: label,
+          extension: 'mp4',
+          height: h,
+          isAudioOnly: false,
+        ),
+      );
+    }
+
+    if (videoOptions.isEmpty) {
+      videoOptions.add(
+        const StreamOption(
+          formatId: 'bv*[vcodec^=avc1]+ba[acodec^=mp4a]'
+              '/bv*[vcodec^=avc1]+ba'
+              '/bv*[vcodec*=h264]+ba[acodec*=aac]'
+              '/bv*[vcodec*=h264]+ba'
+              '/b[format_id=hd]'
+              '/b[format_id=sd]'
+              '/b[vcodec^=avc1]'
+              '/b[vcodec*=h264]'
+              '/bv*+ba'
+              '/b[vcodec!=none]',
+          label: 'Mejor Calidad Disponible (MP4)',
+          extension: 'mp4',
+          isAudioOnly: false,
+        ),
+      );
+    }
+
+    final audioOptions = const <StreamOption>[
+      StreamOption(
+        formatId: 'bestaudio',
+        label: 'MP3',
+        extension: 'mp3',
+        isAudioOnly: true,
+      ),
+      StreamOption(
+        formatId: 'bestaudio[ext=m4a]/bestaudio',
+        label: 'M4A',
+        extension: 'm4a',
+        isAudioOnly: true,
+      ),
+      StreamOption(
+        formatId: 'bestaudio',
+        label: 'FLAC',
+        extension: 'flac',
+        isAudioOnly: true,
+      ),
+      StreamOption(
+        formatId: 'bestaudio',
+        label: 'Opus',
+        extension: 'opus',
+        isAudioOnly: true,
+      ),
+    ];
+
+    talker.info('Análisis completado: "$title" (${videoOptions.length} calidades de video)');
+
+    return MediaInfo(
+      url: url,
+      title: title,
+      uploader: uploader,
+      thumbnailUrl: thumbnail,
+      durationSeconds: duration,
+      videoOptions: videoOptions,
+      audioOptions: audioOptions,
+    );
+  }
+
+  static String sanitizeTitle(String rawTitle) {
     var cleaned = rawTitle.trim();
 
     // 1. Elimina prefijos típicos de métricas en Facebook / Reels / redes sociales:
@@ -487,6 +496,8 @@ class DesktopProcessEngine implements IMediaEngine {
       '',
       '--progress-template',
       'download:%(progress._percent_str)s|%(progress._speed_str)s|%(progress._eta_str)s|%(progress._total_bytes_str)s',
+      '--extractor-args',
+      'youtube:player_client=android,web',
       '-P',
       downloadDir,
       '-o',
