@@ -193,18 +193,24 @@ class UrlInputCard extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 10),
-                        const Text(
-                          'Dirección URL del video',
-                          style: TextStyle(
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFFF1F5F9),
-                            letterSpacing: 0.1,
+                        // Expanded + ellipsis: en pantallas angostas el título cede espacio a la insignia.
+                        Expanded(
+                          child: Text(
+                            isCompact ? 'URL del video' : 'Dirección URL del video',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFFF1F5F9),
+                              letterSpacing: 0.1,
+                            ),
                           ),
                         ),
-                        const Spacer(),
-                        if (validation != null && validation.isValid)
+                        if (validation != null && validation.isValid) ...[
+                          const SizedBox(width: 8),
                           _buildPlatformBadge(validation),
+                        ],
                       ],
                     ),
                     const SizedBox(height: 14),
