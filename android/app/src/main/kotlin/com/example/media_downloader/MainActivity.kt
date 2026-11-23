@@ -2,6 +2,7 @@ package com.example.media_downloader
 
 import android.Manifest
 import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -51,6 +52,7 @@ class MainActivity : FlutterActivity() {
                     result.success(uri != null && MediaExporter.hasTreeAccess(applicationContext, uri))
                 }
                 "ensureStoragePermission" -> ensureStoragePermission(result)
+                "openFolder" -> result.success(openFolder(call.argument<String>("treeUri")))
                 else -> result.notImplemented()
             }
         }
@@ -225,6 +227,26 @@ class MainActivity : FlutterActivity() {
         mainScope.cancel()
         engineScope.cancel()
         super.onDestroy()
+    }
+
+    /** Abre la carpeta en el primer explorador de archivos que acepte alguno de los intents. */
+    private fun openFolder(treeUri: String?): Boolean {
+        val intents = try {
+            MediaExporter.openFolderIntents(treeUri)
+        } catch (e: Exception) {
+            Log.w(TAG, "URI de carpeta inválido: ${e.message}")
+            return false
+        }
+        for (intent in intents) {
+            try {
+                startActivity(intent)
+                return true
+            } catch (_: ActivityNotFoundException) {
+            } catch (e: SecurityException) {
+                Log.w(TAG, "Sin permiso para abrir ${intent.data}: ${e.message}")
+            }
+        }
+        return false
     }
 
     private fun pickFolder(result: MethodChannel.Result) {

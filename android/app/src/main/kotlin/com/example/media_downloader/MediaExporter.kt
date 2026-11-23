@@ -1,6 +1,8 @@
 package com.example.media_downloader
 
+import android.app.DownloadManager
 import android.content.ContentValues
+import android.content.Intent
 import android.content.Context
 import android.media.MediaScannerConnection
 import android.net.Uri
@@ -55,13 +57,44 @@ object MediaExporter {
                 try {
                     resolver.releasePersistableUriPermission(
                         it.uri,
-                        android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                            android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                     )
                 } catch (_: SecurityException) {
                 }
             }
     }
+
+    /**
+     * Intents para abrir la carpeta de destino en un explorador de archivos, en orden de
+     * preferencia. No existe una forma estándar, así que se prueban varias.
+     */
+    fun openFolderIntents(treeUri: String?): List<Intent> {
+        val flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
+        val dirType = DocumentsContract.Document.MIME_TYPE_DIR
+        val intents = mutableListOf<Intent>()
+        if (treeUri != null) {
+            val tree = Uri.parse(treeUri)
+            val docId = DocumentsContract.getTreeDocumentId(tree)
+            // URI de documento simple (lo que espera el explorador del sistema) y, si no, el del árbol SAF.
+            intents += Intent(Intent.ACTION_VIEW)
+                .setDataAndType(DocumentsContract.buildDocumentUri(tree.authority, docId), dirType)
+                .addFlags(flags)
+            intents += Intent(Intent.ACTION_VIEW)
+                .setDataAndType(DocumentsContract.buildDocumentUriUsingTree(tree, docId), dirType)
+                .addFlags(flags)
+        } else {
+            intents += Intent(Intent.ACTION_VIEW)
+                .setDataAndType(
+                    DocumentsContract.buildDocumentUri(EXTERNAL_STORAGE_AUTHORITY, "primary:${Environment.DIRECTORY_DOWNLOADS}"),
+                    dirType,
+                )
+                .addFlags(flags)
+            intents += Intent(DownloadManager.ACTION_VIEW_DOWNLOADS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        return intents
+    }
+
+    private const val EXTERNAL_STORAGE_AUTHORITY = "com.android.externalstorage.documents"
 
     /** Ruta legible de una carpeta SAF, solo para mostrarla (no se usa para escribir). */
     fun displayPathForTree(treeUri: Uri): String {

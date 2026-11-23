@@ -160,15 +160,12 @@ class _HomeScreenState extends State<HomeScreen> {
       } else if (Platform.isMacOS) {
         await Process.run('open', [_downloadDirectory]);
       } else if (Platform.isAndroid) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Guardado en: $_downloadDirectory'),
-              behavior: SnackBarBehavior.floating,
-              duration: const Duration(seconds: 3),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-          );
+        final opened = await _folderChannel.invokeMethod<bool>('openFolder', {
+              'treeUri': _destination?.androidTreeUri,
+            }) ??
+            false;
+        if (!opened) {
+          _showInfoSnackBar('No se encontró un explorador de archivos compatible. Guardado en: $_downloadDirectory');
         }
       }
     } catch (e) {
