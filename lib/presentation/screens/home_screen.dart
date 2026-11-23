@@ -71,6 +71,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _checkSystemRequirements();
     _initDestination();
     _loadDebugYoutubeClient();
+    _restoreActiveDownload();
   }
 
   String? get _youtubeClient => _engine is AndroidNativeEngine ? _engine.youtubePlayerClient : null;
@@ -593,20 +594,38 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     });
 
+    _listenToDownload(
+      _engine.download(
+        url: _mediaInfo!.url,
+        option: option,
+        destination: destination,
+        customTitle: _mediaInfo!.title,
+      ),
+    );
+  }
+
+  /// Android: si la descarga siguió en segundo plano (o terminó con la app cerrada),
+  /// vuelve a mostrar su progreso al abrir la app.
+  Future<void> _restoreActiveDownload() async {
+    final engine = _engine;
+    if (engine is! AndroidNativeEngine) return;
+    final stream = await engine.attachToActiveDownload();
+    if (stream == null || !mounted) return;
+    talker.info('Recuperando la descarga en segundo plano');
+    setState(() => _isDownloading = true);
+    _listenToDownload(stream);
+  }
+
+  void _listenToDownload(Stream<DownloadProgress> stream) {
     _downloadSub?.cancel();
-    _downloadSub = _engine
-        .download(
-      url: _mediaInfo!.url,
-      option: option,
-      destination: destination,
-      customTitle: _mediaInfo!.title,
-    )
-        .listen(
+    _downloadSub = stream.listen(
       (progress) {
         if (mounted) {
           setState(() {
             _downloadProgress = progress;
-            if (progress.status == DownloadStatus.completed || progress.status == DownloadStatus.error) {
+            if (progress.status == DownloadStatus.completed ||
+                progress.status == DownloadStatus.error ||
+                progress.status == DownloadStatus.cancelled) {
               _isDownloading = false;
             }
           });
@@ -632,8 +651,8 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _isDownloading = false;
       _downloadProgress = const DownloadProgress(
-        status: DownloadStatus.error,
-        errorMessage: 'Descarga cancelada manualmente por el usuario.',
+        status: DownloadStatus.cancelled,
+        currentStep: 'Descarga cancelada',
       );
     });
   }
