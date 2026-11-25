@@ -53,7 +53,7 @@ class _QualitySelectorCardState extends State<QualitySelectorCard> {
         );
       } else {
         _selectedOption = available.firstWhere(
-          (opt) => opt.extension.toLowerCase() == 'mp3',
+          (opt) => opt.extension.toLowerCase() == 'm4a',
           orElse: () => available.first,
         );
       }
@@ -483,7 +483,8 @@ class _OptionTile extends StatelessWidget {
 
   String _getLabel() {
     if (isAudio) {
-      return option.extension.toUpperCase();
+      // El formato ya está en la insignia; aquí va para qué sirve.
+      return option.note ?? option.extension.toUpperCase();
     }
     final h = option.height;
     if (h != null && h > 0) {

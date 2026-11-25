@@ -275,29 +275,35 @@ class DesktopProcessEngine implements IMediaEngine {
       );
     }
 
+    // M4A y Opus se guardan tal como los entrega la plataforma (sin recodificar);
+    // MP3 y FLAC se convierten con FFmpeg, más lento y sin ganar calidad.
     final audioOptions = const <StreamOption>[
-      StreamOption(
-        formatId: 'bestaudio',
-        label: 'MP3',
-        extension: 'mp3',
-        isAudioOnly: true,
-      ),
       StreamOption(
         formatId: 'bestaudio[ext=m4a]/bestaudio',
         label: 'M4A',
         extension: 'm4a',
+        note: 'Recomendado',
         isAudioOnly: true,
       ),
       StreamOption(
         formatId: 'bestaudio',
-        label: 'FLAC',
-        extension: 'flac',
+        label: 'MP3',
+        extension: 'mp3',
+        note: 'Compatible',
         isAudioOnly: true,
       ),
       StreamOption(
         formatId: 'bestaudio[acodec=opus]/bestaudio',
         label: 'Opus',
         extension: 'opus',
+        note: 'Ligero',
+        isAudioOnly: true,
+      ),
+      StreamOption(
+        formatId: 'bestaudio',
+        label: 'FLAC',
+        extension: 'flac',
+        note: 'Para edición',
         isAudioOnly: true,
       ),
     ];

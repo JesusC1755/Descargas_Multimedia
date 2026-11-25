@@ -85,7 +85,7 @@ void main() {
       expect(info.title, 'Video de prueba');
       expect(info.uploader, 'Canal');
       expect(info.durationSeconds, 232);
-      expect(info.audioOptions.map((o) => o.extension), ['mp3', 'm4a', 'flac', 'opus']);
+      expect(info.audioOptions.map((o) => o.extension), ['m4a', 'mp3', 'opus', 'flac']);
     });
   });
 

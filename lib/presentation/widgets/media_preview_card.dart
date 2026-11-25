@@ -263,33 +263,37 @@ class MediaPreviewCard extends StatelessWidget {
     );
   }
 
+  /// Las dos insignias lado a lado, a partes iguales; el texto se reduce si no cabe.
   Widget _buildBottomBadges() {
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
+    return Row(
       children: [
         // Insignia de calidades de video (Cian Eléctrico)
-        _buildPill(
-          icon: Icons.tv_rounded,
-          label: mediaInfo.videoOptions.length == 1
-              ? '1 calidad de video'
-              : '${mediaInfo.videoOptions.length} calidades de video',
-          textColor: const Color(0xFF67E8F9),
-          iconColor: const Color(0xFF22D3EE),
-          bgColor: const Color(0xFF083344).withValues(alpha: 0.4),
-          borderColor: const Color(0xFF06B6D4).withValues(alpha: 0.25),
+        Expanded(
+          child: _buildPill(
+            icon: Icons.tv_rounded,
+            label: mediaInfo.videoOptions.length == 1
+                ? '1 calidad de video'
+                : '${mediaInfo.videoOptions.length} calidades de video',
+            textColor: const Color(0xFF67E8F9),
+            iconColor: const Color(0xFF22D3EE),
+            bgColor: const Color(0xFF083344).withValues(alpha: 0.4),
+            borderColor: const Color(0xFF06B6D4).withValues(alpha: 0.25),
+          ),
         ),
+        const SizedBox(width: 8),
 
-        // Insignia de pistas de audio (Rosa / Magenta Neón - Señalado con flecha)
-        _buildPill(
-          icon: Icons.music_note_rounded,
-          label: mediaInfo.audioOptions.length == 1
-              ? '1 formato de audio'
-              : '${mediaInfo.audioOptions.length} formatos de audio',
-          textColor: const Color(0xFFF472B6),
-          iconColor: const Color(0xFFF472B6),
-          bgColor: const Color(0xFF500724).withValues(alpha: 0.4),
-          borderColor: const Color(0xFFEC4899).withValues(alpha: 0.25),
+        // Insignia de pistas de audio (Rosa / Magenta Neón)
+        Expanded(
+          child: _buildPill(
+            icon: Icons.music_note_rounded,
+            label: mediaInfo.audioOptions.length == 1
+                ? '1 formato de audio'
+                : '${mediaInfo.audioOptions.length} formatos de audio',
+            textColor: const Color(0xFFF472B6),
+            iconColor: const Color(0xFFF472B6),
+            bgColor: const Color(0xFF500724).withValues(alpha: 0.4),
+            borderColor: const Color(0xFFEC4899).withValues(alpha: 0.25),
+          ),
         ),
       ],
     );
@@ -313,24 +317,28 @@ class MediaPreviewCard extends StatelessWidget {
           width: 1,
         ),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            size: 14,
-            color: iconColor,
-          ),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: TextStyle(
-              color: textColor,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 14,
+              color: iconColor,
             ),
-          ),
-        ],
+            const SizedBox(width: 6),
+            Text(
+              label,
+              maxLines: 1,
+              style: TextStyle(
+                color: textColor,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
