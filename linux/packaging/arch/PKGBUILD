@@ -1,0 +1,55 @@
+# PKGBUILD de Media Downloader para Arch Linux y derivadas (CachyOS, Manjaro, EndeavourOS…).
+# Empaqueta el bundle ya compilado del .tar.gz portable; lo genera build-arch-package.sh.
+# yt-dlp y FFmpeg vienen de los repositorios de Arch (pacman los mantiene al día), por eso
+# se quita la copia de yt-dlp que trae el portable en tools/.
+
+pkgname=media-downloader-bin
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="Descargador de video y audio con interfaz gráfica (yt-dlp + FFmpeg)"
+arch=('x86_64')
+url="https://github.com/JesusC1755/Descargas_Multimedia"
+license=('unknown')
+depends=('gtk3' 'ffmpeg' 'yt-dlp')
+optdepends=('nodejs: resolver el desafío JavaScript de YouTube si falla el cliente principal')
+provides=('media-downloader')
+conflicts=('media-downloader')
+options=('!strip' '!debug')
+source=("MediaDownloader-${pkgver}-Linux-x64-Portable.tar.gz")
+sha256sums=('SKIP')
+
+_appid=io.github.jesusc1755.mediadownloader
+
+package() {
+    local bundle="$srcdir/media-downloader-linux-x64"
+
+    install -d "$pkgdir/opt/media-downloader"
+    cp -a "$bundle/." "$pkgdir/opt/media-downloader/"
+    rm -rf "$pkgdir/opt/media-downloader/tools" "$pkgdir/opt/media-downloader/run.sh"
+
+    install -Dm755 /dev/stdin "$pkgdir/usr/bin/media-downloader" <<'WRAPPER'
+#!/bin/sh
+exec /opt/media-downloader/media_downloader "$@"
+WRAPPER
+
+    install -Dm644 /dev/stdin "$pkgdir/usr/share/applications/$_appid.desktop" <<DESKTOP
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Media Downloader
+Comment=Descargas de audio y video con yt-dlp y FFmpeg
+Exec=/usr/bin/media-downloader %u
+Icon=$_appid
+Terminal=false
+Categories=AudioVideo;Audio;Video;Network;
+StartupWMClass=$_appid
+Keywords=youtube;downloader;video;audio;mp3;mp4;
+DESKTOP
+
+    local icons="$bundle/data/flutter_assets/assets/icons"
+    for size in 32 64 128 256; do
+        install -Dm644 "$icons/app_icon_$size.png" \
+            "$pkgdir/usr/share/icons/hicolor/${size}x${size}/apps/$_appid.png"
+    done
+    install -Dm644 "$icons/app_icon.png" "$pkgdir/usr/share/icons/hicolor/512x512/apps/$_appid.png"
+}

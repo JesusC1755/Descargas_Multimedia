@@ -10,7 +10,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 DIST_DIR="$PROJECT_ROOT/dist"
 BUNDLE_DIR="$PROJECT_ROOT/build/linux/x64/release/bundle"
-LOCAL_CACHE="$PROJECT_ROOT/linux/tools"
 
 SKIP_BUILD=false
 VERSION=""
@@ -61,24 +60,18 @@ if [ ! -d "$BUNDLE_DIR" ]; then
 fi
 
 mkdir -p "$DIST_DIR"
-mkdir -p "$LOCAL_CACHE"
 
-# 2. Asegurar binario de yt-dlp autónomo en tools/
+# 2. Última versión del binario standalone de yt-dlp en tools/ (trae Python incluido).
+#    Queda junto al ejecutable, en una carpeta del usuario, así que la app lo actualiza sola.
 TOOLS_DEST="$BUNDLE_DIR/tools"
 mkdir -p "$TOOLS_DEST"
-
-YTDLP_BIN="$LOCAL_CACHE/yt-dlp"
-if [ ! -f "$YTDLP_BIN" ]; then
-    echo "[*] Descargando binario oficial standalone de yt-dlp para Linux..."
-    curl -fsSL "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp" -o "$YTDLP_BIN"
-    chmod +x "$YTDLP_BIN"
-fi
-cp "$YTDLP_BIN" "$TOOLS_DEST/yt-dlp"
+echo "[*] Descargando la última versión de yt-dlp (standalone)..."
+curl -fsSL "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux" -o "$TOOLS_DEST/yt-dlp"
 chmod +x "$TOOLS_DEST/yt-dlp"
-echo "[+] Binario yt-dlp sincronizado en tools/."
+echo "[+] yt-dlp $("$TOOLS_DEST/yt-dlp" --version) en tools/."
 
 # 3. Generar paquete Portable .tar.gz
-TAR_NAME="MediaDownloader-Linux-x64-Portable.tar.gz"
+TAR_NAME="MediaDownloader-${VERSION}-Linux-x64-Portable.tar.gz"
 TAR_OUTPUT="$DIST_DIR/$TAR_NAME"
 STAGE_PORTABLE="$DIST_DIR/media-downloader-linux-x64"
 
@@ -102,7 +95,15 @@ tar -czf "$TAR_OUTPUT" -C "$DIST_DIR" "media-downloader-linux-x64"
 rm -rf "$STAGE_PORTABLE"
 echo "[✔] Paquete portable generado: $TAR_OUTPUT ($(du -h "$TAR_OUTPUT" | cut -f1))"
 
-# 4. Generar paquete nativo .deb (Debian / Ubuntu / Linux Mint)
+# 4. Generar paquete nativo .deb (Debian / Ubuntu / Linux Mint), si dpkg-deb está disponible
+if ! command -v dpkg-deb >/dev/null 2>&1; then
+    echo ""
+    echo "[!] dpkg-deb no está instalado: se omite el paquete .deb."
+    echo "Archivos generados en $DIST_DIR:"
+    ls -lh "$DIST_DIR"
+    exit 0
+fi
+
 DEB_PACKAGE_NAME="media-downloader"
 DEB_FILE_NAME="${DEB_PACKAGE_NAME}_${VERSION}_amd64.deb"
 DEB_OUTPUT="$DIST_DIR/$DEB_FILE_NAME"
@@ -134,29 +135,29 @@ EOF
 chmod 755 "$STAGE_DEB/usr/bin/media_downloader"
 
 # Acceso directo .desktop
-cat << 'EOF' > "$STAGE_DEB/usr/share/applications/com.example.media_downloader.desktop"
+cat << 'EOF' > "$STAGE_DEB/usr/share/applications/io.github.jesusc1755.mediadownloader.desktop"
 [Desktop Entry]
 Version=1.0
 Type=Application
 Name=Media Downloader
 Comment=Descargas de Audio y Video con yt-dlp y FFmpeg
 Exec=/usr/bin/media_downloader %u
-Icon=com.example.media_downloader
+Icon=io.github.jesusc1755.mediadownloader
 Terminal=false
 Categories=AudioVideo;Audio;Video;Network;
-StartupWMClass=com.example.media_downloader
+StartupWMClass=io.github.jesusc1755.mediadownloader
 Keywords=youtube;downloader;video;audio;mp3;mp4;
 EOF
-chmod 644 "$STAGE_DEB/usr/share/applications/com.example.media_downloader.desktop"
+chmod 644 "$STAGE_DEB/usr/share/applications/io.github.jesusc1755.mediadownloader.desktop"
 
 # Copiar iconos en todas las resoluciones
 ICONS_SRC="$PROJECT_ROOT/assets/icons"
 if [ -d "$ICONS_SRC" ]; then
-    [ -f "$ICONS_SRC/app_icon_32.png" ]  && cp "$ICONS_SRC/app_icon_32.png"  "$STAGE_DEB/usr/share/icons/hicolor/32x32/apps/com.example.media_downloader.png"
-    [ -f "$ICONS_SRC/app_icon_64.png" ]  && cp "$ICONS_SRC/app_icon_64.png"  "$STAGE_DEB/usr/share/icons/hicolor/64x64/apps/com.example.media_downloader.png"
-    [ -f "$ICONS_SRC/app_icon_128.png" ] && cp "$ICONS_SRC/app_icon_128.png" "$STAGE_DEB/usr/share/icons/hicolor/128x128/apps/com.example.media_downloader.png"
-    [ -f "$ICONS_SRC/app_icon_256.png" ] && cp "$ICONS_SRC/app_icon_256.png" "$STAGE_DEB/usr/share/icons/hicolor/256x256/apps/com.example.media_downloader.png"
-    [ -f "$ICONS_SRC/app_icon.png" ]     && cp "$ICONS_SRC/app_icon.png"     "$STAGE_DEB/usr/share/icons/hicolor/512x512/apps/com.example.media_downloader.png"
+    [ -f "$ICONS_SRC/app_icon_32.png" ]  && cp "$ICONS_SRC/app_icon_32.png"  "$STAGE_DEB/usr/share/icons/hicolor/32x32/apps/io.github.jesusc1755.mediadownloader.png"
+    [ -f "$ICONS_SRC/app_icon_64.png" ]  && cp "$ICONS_SRC/app_icon_64.png"  "$STAGE_DEB/usr/share/icons/hicolor/64x64/apps/io.github.jesusc1755.mediadownloader.png"
+    [ -f "$ICONS_SRC/app_icon_128.png" ] && cp "$ICONS_SRC/app_icon_128.png" "$STAGE_DEB/usr/share/icons/hicolor/128x128/apps/io.github.jesusc1755.mediadownloader.png"
+    [ -f "$ICONS_SRC/app_icon_256.png" ] && cp "$ICONS_SRC/app_icon_256.png" "$STAGE_DEB/usr/share/icons/hicolor/256x256/apps/io.github.jesusc1755.mediadownloader.png"
+    [ -f "$ICONS_SRC/app_icon.png" ]     && cp "$ICONS_SRC/app_icon.png"     "$STAGE_DEB/usr/share/icons/hicolor/512x512/apps/io.github.jesusc1755.mediadownloader.png"
 fi
 
 # Archivo de control de Debian
