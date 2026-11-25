@@ -36,19 +36,22 @@ RUN git clone --depth 1 -b ${FLUTTER_CHANNEL} https://github.com/flutter/flutter
     flutter config --no-analytics --enable-linux-desktop && \
     flutter precache --linux
 
-# 3. Descargar el binario standalone oficial de yt-dlp (evita instalar Python/pip en runner)
-RUN curl -fsSL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux -o /usr/local/bin/yt-dlp && \
-    chmod a+rx /usr/local/bin/yt-dlp
-
 WORKDIR /app
 
-# 4. Optimización de caché de capas Docker: resolver dependencias pub antes del código
+# 3. Optimización de caché de capas Docker: resolver dependencias pub antes del código
 COPY pubspec.yaml pubspec.lock* ./
 RUN flutter pub get
 
-# 5. Copiar el código fuente y compilar el bundle Linux Desktop en modo Release
+# 4. Copiar el código fuente y compilar el bundle Linux Desktop en modo Release
 COPY . .
 RUN flutter build linux --release
+
+# 5. Binario standalone oficial de yt-dlp (trae Python incluido; evita instalar Python/pip).
+#    ADD con URL: en cada construcción Docker comprueba si el archivo remoto cambió, así que la
+#    imagen siempre sale con la última versión (con `RUN curl`, la caché la dejaba congelada).
+#    Va después de compilar para que una versión nueva no invalide la caché de Flutter.
+ADD https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux /opt/yt-dlp
+RUN chmod 755 /opt/yt-dlp
 
 # ------------------------------------------------------------------------------
 # Stage 2: Entorno Limpio de Ejecución (Runner)
@@ -98,8 +101,9 @@ RUN (id -u ${USER_ID} >/dev/null 2>&1 && userdel -r $(id -un ${USER_ID}) 2>/dev/
     ln -s /home/appuser/Descargas /home/appuser/Downloads && \
     chown -R appuser:appuser /home/appuser
 
-# 3. Copiar binario standalone de yt-dlp desde la etapa de compilación
-COPY --from=builder /usr/local/bin/yt-dlp /usr/local/bin/yt-dlp
+# 3. yt-dlp en ~/.local/bin del usuario del contenedor (primera ruta que busca la app) y
+#    con su propiedad, para que la app lo actualice sola con `yt-dlp -U` cada 24 h.
+COPY --from=builder --chown=appuser:appuser /opt/yt-dlp /home/appuser/.local/bin/yt-dlp
 
 # 4. Copiar únicamente el bundle ejecutable compilado de Flutter
 COPY --from=builder --chown=appuser:appuser /app/build/linux/x64/release/bundle /app
@@ -108,6 +112,7 @@ COPY --from=builder --chown=appuser:appuser /app/build/linux/x64/release/bundle 
 USER appuser
 WORKDIR /app
 ENV HOME=/home/appuser
+ENV PATH=/home/appuser/.local/bin:$PATH
 
 # 6. Ejecutar la aplicación
 ENTRYPOINT ["/app/media_downloader"]

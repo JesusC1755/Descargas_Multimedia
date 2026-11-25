@@ -129,8 +129,8 @@ A diferencia de interfaces estáticas convencionales, Media Downloader incorpora
 
 ### 1. Optimización Multi-Stage (< 300 MB)
 Las imágenes tradicionales de Flutter Desktop suelen pesar entre 3 GB y 5 GB al arrastrar compiladores y herramientas de desarrollo. Este contenedor reduce la huella a **~295 MB**:
-* **Stage 1 (Builder - `ubuntu:24.04`):** Clona Flutter stable, descarga dependencias (`flutter pub get`), compila el bundle estático en release y extrae el binario standalone de `yt-dlp`. Todo este entorno pesado es **descartado al 100%**.
-* **Stage 2 (Runner - `ubuntu:24.04`):** Base limpia que instala exclusivamente librerías dinámicas de ejecución (`libgtk-3-0t64`, `libgl1-mesa-dri`, `libegl1`, `libgles2`, `libpulse0`, `ffmpeg`, `nodejs`). Suprime manuales y cachés de paquetes (`/etc/dpkg/dpkg.cfg.d/nodoc`).
+* **Stage 1 (Builder - `ubuntu:24.04`):** Clona Flutter stable, descarga dependencias (`flutter pub get`), compila el bundle estático en release y descarga la última versión del binario standalone de `yt-dlp` (en cada construcción se comprueba si salió una nueva). Todo este entorno pesado es **descartado al 100%**.
+* **Stage 2 (Runner - `ubuntu:24.04`):** Base limpia que instala exclusivamente librerías dinámicas de ejecución (`libgtk-3-0t64`, `libgl1-mesa-dri`, `libegl1`, `libgles2`, `libpulse0`, `ffmpeg`, `nodejs`). Suprime manuales y cachés de paquetes (`/etc/dpkg/dpkg.cfg.d/nodoc`). `yt-dlp` se copia a `~/.local/bin` del usuario del contenedor y con su propiedad, para que la app lo actualice sola cada 24 h.
 
 ### 2. Aceleración Gráfica GPU y Servidor X11
 * **Dispositivos `/dev/dri`:** Renderizado nativo por GPU (Intel, AMD, NVIDIA con drivers Mesa DRI).
