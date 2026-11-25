@@ -362,9 +362,13 @@ class _DownloadProgressCardState extends State<DownloadProgressCard>
         ),
         const SizedBox(height: 14),
 
-        // Fila técnica de estado y métricas
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        // Fila técnica de estado y métricas. Wrap: en pantallas angostas las métricas
+        // pasan a la línea siguiente en vez de desbordarse.
+        Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 12,
+          runSpacing: 8,
           children: [
             if (isIndeterminate)
               _buildIndeterminateBadge(theme)
@@ -374,6 +378,7 @@ class _DownloadProgressCardState extends State<DownloadProgressCard>
               _buildDeterminateBadge(theme),
 
             Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 if (widget.progress.speed != null && widget.progress.speed!.isNotEmpty) ...[
                   const Icon(Icons.speed_rounded, size: 14, color: Color(0xFF38BDF8)),
