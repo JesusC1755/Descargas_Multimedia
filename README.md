@@ -23,7 +23,7 @@
 * 🔒 **Topología 100% Local (Zero-Server):** Sin servidores intermediarios, proxies de terceros ni costos de nube. Todas las peticiones salen de la conexión directa del dispositivo, previniendo bloqueos por IP de datacenters (HTTP 429 / Cloudflare / captchas).
 * 🎯 **Compatibilidad Multiplataforma:** Soporte para YouTube, TikTok, Instagram Reels, X (Twitter), Facebook, Twitch VODs, Reddit, Vimeo y enlaces directos de video.
 * 🎛️ **Control Granular de Calidad y Formato:**
-  * **Video (MP4):** Resoluciones desde 360p hasta 4K UHD y 60 FPS, priorizando códecs universales (`H.264 / AVC1` + `AAC`) para reproducción garantizada en VLC, reproductores de escritorio, navegadores y Smart TVs.
+  * **Video (MP4):** Resoluciones hasta 1080p (Full HD) en `H.264 / AVC1` + `AAC`, descargadas sin recodificar, para reproducción garantizada en VLC, reproductores de escritorio, navegadores y Smart TVs.
   * **Solo Audio:** Extracción dedicada a contenedores y códecs de alta fidelidad (`MP3` a 320 kbps, `FLAC`, `M4A/AAC`, `Opus`).
 * ⚡ **Streaming Reactivo en Tiempo Real:** Barra de progreso fluida con porcentaje exacto, velocidad de transferencia (`MB/s`), tiempo estimado de finalización (`ETA`) y etapa de multiplexación (`muxing` con FFmpeg).
 * 🛡️ **Validación y Sanitización Robusta:** Detección de URLs maliciosas o malformadas, eliminación de parámetros espía de seguimiento (`utm_*`, `si=`, `fbclid`) antes de invocar subprocesos.

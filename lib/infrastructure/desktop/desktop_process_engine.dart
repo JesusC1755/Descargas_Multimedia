@@ -13,7 +13,6 @@ import '../../domain/ports/media_engine_port.dart';
 
 class DesktopProcessEngine implements IMediaEngine {
   Process? _activeProcess;
-  Process? _activeTranscodeProcess;
   bool _cancelRequested = false;
 
   static final RegExp _emojiRegex = RegExp(
@@ -41,6 +40,50 @@ class DesktopProcessEngine implements IMediaEngine {
   static final RegExp emojiRegex = _emojiRegex;
 
   static const String _progressMarker = '[PROGRESS]';
+
+  // --- Caché del análisis ---------------------------------------------------------------
+  // La descarga reutiliza el JSON del análisis con `--load-info-json` y no repite la
+  // extracción (~8 s menos en YouTube). Los enlaces de YouTube caducan a las ~6 h; 3 h deja margen.
+
+  static const Duration _infoTtl = Duration(hours: 3);
+  final Map<String, ({File file, DateTime savedAt})> _infoCache = {};
+  int _infoCounter = 0;
+
+  Directory get _infoDir => Directory('${Directory.systemTemp.path}${Platform.pathSeparator}media_downloader_info');
+
+  void _saveInfo(String url, String json) {
+    try {
+      _discardInfo(url);
+      _infoDir.createSync(recursive: true);
+      // Restos de sesiones anteriores ya caducados.
+      for (final old in _infoDir.listSync().whereType<File>()) {
+        if (DateTime.now().difference(old.statSync().modified) > _infoTtl) old.deleteSync();
+      }
+      final file = File('${_infoDir.path}${Platform.pathSeparator}${pid}_${_infoCounter++}.json');
+      file.writeAsStringSync(json);
+      _infoCache[url] = (file: file, savedAt: DateTime.now());
+    } catch (e) {
+      // Sin caché la descarga simplemente vuelve a extraer desde la URL.
+      talker.warning('No se pudo guardar el análisis para reutilizarlo: $e');
+    }
+  }
+
+  File? _cachedInfoFor(String url) {
+    final entry = _infoCache[url];
+    if (entry == null) return null;
+    if (DateTime.now().difference(entry.savedAt) > _infoTtl || !entry.file.existsSync()) {
+      _discardInfo(url);
+      return null;
+    }
+    return entry.file;
+  }
+
+  void _discardInfo(String url) {
+    final entry = _infoCache.remove(url);
+    try {
+      entry?.file.deleteSync();
+    } catch (_) {}
+  }
 
   String _resolveToolExecutable(String baseName) {
     final isWin = Platform.isWindows;
@@ -80,7 +123,6 @@ class DesktopProcessEngine implements IMediaEngine {
 
   String _getYtDlpExecutable() => _resolveToolExecutable('yt-dlp');
   String _getFfmpegExecutable() => _resolveToolExecutable('ffmpeg');
-  String _getFfprobeExecutable() => _resolveToolExecutable('ffprobe');
   String _getNodeExecutable() => _resolveToolExecutable('node');
 
   List<String> _getJsRuntimeArgs() {
@@ -127,19 +169,32 @@ class DesktopProcessEngine implements IMediaEngine {
     }
   }
 
+  /// Calidades ofrecidas: H.264 hasta 1080p, que se descarga sin recodificar
+  /// (por encima de 1080p YouTube solo entrega VP9/AV1).
+  static const int maxVideoHeight = 1080;
+
+  /// Cliente de YouTube (`youtube:player_client=…`): analiza en ~4 s frente a ~8 s de los
+  /// clientes por defecto y descarga más rápido. Si falla, se reintenta con los de yt-dlp.
+  static const String youtubePlayerClient = 'ios_producer';
+
   @override
   Future<MediaInfo> analyzeUrl(String url) async {
     final bin = _getYtDlpExecutable();
     final jsArgs = _getJsRuntimeArgs();
     talker.info('Iniciando análisis con $bin para URL: $url');
-    final args = [
-      ...jsArgs,
-      '--no-playlist',
-      '--dump-json',
-      url,
-    ];
+    List<String> argsFor(String? playerClient) => [
+          ...jsArgs,
+          '--no-playlist',
+          '--dump-json',
+          if (playerClient != null) ...['--extractor-args', 'youtube:player_client=$playerClient'],
+          url,
+        ];
 
-    final process = await Process.run(bin, args);
+    var process = await Process.run(bin, argsFor(youtubePlayerClient));
+    if (process.exitCode != 0) {
+      talker.warning('Análisis con $youtubePlayerClient falló; reintentando con los clientes por defecto', process.stderr);
+      process = await Process.run(bin, argsFor(null));
+    }
 
     if (process.exitCode != 0) {
       final err = process.stderr.toString().trim();
@@ -153,7 +208,8 @@ class DesktopProcessEngine implements IMediaEngine {
         throw Exception('Estructura de metadatos inesperada de yt-dlp');
       }
 
-      return parseMediaInfo(rawJson, url);
+      _saveInfo(url, process.stdout.toString());
+      return parseMediaInfo(rawJson, url, h264Only: true, maxHeight: maxVideoHeight);
     } catch (e, st) {
       talker.error('Error parseando JSON de metadatos de yt-dlp', e, st);
       rethrow;
@@ -515,7 +571,6 @@ class DesktopProcessEngine implements IMediaEngine {
 
     final args = <String>[
       ...jsArgs,
-      url,
       '--newline',
       // Limpieza de métricas en metadatos
       '--replace-in-metadata',
@@ -577,94 +632,94 @@ class DesktopProcessEngine implements IMediaEngine {
       args.addAll(['--ffmpeg-location', ffmpegDir]);
     }
 
-    talker.info('Lanzando comando: $bin ${args.join(" ")}');
-    final stderrBuffer = StringBuffer();
-    String? downloadedFilePath;
+    // Con el JSON del análisis no se repite la extracción; si falla (enlaces caducados u
+    // otro error), se reintenta una vez desde la URL.
+    final cachedInfo = _cachedInfoFor(url);
 
-    Process.start(bin, args).then((process) {
-      _activeProcess = process;
+    void launch({required bool fromInfo}) {
+      final source = fromInfo ? ['--load-info-json', cachedInfo!.path] : [url];
+      final fullArgs = [...source, ...args];
+      talker.info('Lanzando comando: $bin ${fullArgs.join(" ")}');
+      final stderrBuffer = StringBuffer();
+      String? downloadedFilePath;
 
-      process.stdout
-          .transform(utf8.decoder)
-          .transform(const LineSplitter())
-          .listen((line) {
-        if (line.startsWith(_progressMarker)) {
-          final parts = line.substring(_progressMarker.length).split('|');
-          if (parts.isNotEmpty) {
-            final rawPercent = parts[0].replaceAll('%', '').trim();
-            final percent = double.tryParse(rawPercent) ?? currentProgress.percentage;
-            final speed = parts.length > 1 ? parts[1].trim() : null;
-            final eta = parts.length > 2 ? parts[2].trim() : null;
+      Process.start(bin, fullArgs).then((process) {
+        _activeProcess = process;
 
+        process.stdout
+            .transform(utf8.decoder)
+            .transform(const LineSplitter())
+            .listen((line) {
+          if (line.startsWith(_progressMarker)) {
+            final parts = line.substring(_progressMarker.length).split('|');
+            if (parts.isNotEmpty) {
+              final rawPercent = parts[0].replaceAll('%', '').trim();
+              final percent = double.tryParse(rawPercent) ?? currentProgress.percentage;
+              final speed = parts.length > 1 ? parts[1].trim() : null;
+              final eta = parts.length > 2 ? parts[2].trim() : null;
+
+              currentProgress = currentProgress.copyWith(
+                status: DownloadStatus.downloading,
+                percentage: percent,
+                speed: speed,
+                eta: eta,
+                currentStep: 'Descargando flujo de medios...',
+              );
+              controller.add(currentProgress);
+            }
+          } else if (line.startsWith('[FINAL_PATH]:')) {
+            final path = line.substring(13).trim();
+            if (path.isNotEmpty) {
+              downloadedFilePath = path;
+              talker.info('Ruta final detectada vía [FINAL_PATH]: $downloadedFilePath');
+            }
+          } else if (line.contains('[Merger] Merging formats into "')) {
+            final match = RegExp(r'\[Merger\] Merging formats into "([^"]+)"').firstMatch(line);
+            if (match != null) {
+              downloadedFilePath ??= match.group(1);
+            }
+            talker.info('[FFmpeg/Muxer] $line');
             currentProgress = currentProgress.copyWith(
-              status: DownloadStatus.downloading,
-              percentage: percent,
-              speed: speed,
-              eta: eta,
-              currentStep: 'Descargando flujo de medios...',
+              status: DownloadStatus.processing,
+              percentage: 99.0,
+              currentStep: 'Empaquetando pistas con FFmpeg...',
             );
             controller.add(currentProgress);
-          }
-        } else if (line.startsWith('[FINAL_PATH]:')) {
-          final path = line.substring(13).trim();
-          if (path.isNotEmpty) {
-            downloadedFilePath = path;
-            talker.info('Ruta final detectada vía [FINAL_PATH]: $downloadedFilePath');
-          }
-        } else if (line.contains('[Merger] Merging formats into "')) {
-          final match = RegExp(r'\[Merger\] Merging formats into "([^"]+)"').firstMatch(line);
-          if (match != null) {
-            downloadedFilePath ??= match.group(1);
-          }
-          talker.info('[FFmpeg/Muxer] $line');
-          currentProgress = currentProgress.copyWith(
-            status: DownloadStatus.processing,
-            percentage: 99.0,
-            currentStep: 'Empaquetando pistas con FFmpeg...',
-          );
-          controller.add(currentProgress);
-        } else if (line.contains('Destination: ')) {
-          final match = RegExp(r'Destination:\s+(.+\.(?:mp4|mkv|webm|m4a|mp3|flac|opus))').firstMatch(line);
-          if (match != null) {
-            downloadedFilePath ??= match.group(1);
-          }
-        } else if (line.contains('[ExtractAudio]') || line.contains('[Fixup')) {
-          talker.info('[FFmpeg/Muxer] $line');
-          currentProgress = currentProgress.copyWith(
-            status: DownloadStatus.processing,
-            percentage: 99.0,
-            currentStep: 'Procesando audio con FFmpeg...',
-          );
-          controller.add(currentProgress);
-        } else if (line.trim().isNotEmpty) {
-          talker.debug('[yt-dlp stdout] $line');
-        }
-      });
-
-      process.stderr
-          .transform(utf8.decoder)
-          .transform(const LineSplitter())
-          .listen((line) {
-        if (line.trim().isNotEmpty) {
-          stderrBuffer.writeln(line);
-          talker.warning('[yt-dlp stderr] $line');
-        }
-      });
-
-      process.exitCode.then((code) async {
-        _activeProcess = null;
-        if (code == 0) {
-          downloadedFilePath ??= (expectedFinalPath != null && File(expectedFinalPath).existsSync())
-              ? expectedFinalPath
-              : null;
-
-          if (!option.isAudioOnly && downloadedFilePath != null && File(downloadedFilePath!).existsSync()) {
-            await _ensureH264Compatibility(
-              downloadedFilePath!,
-              controller,
-              currentProgress,
+          } else if (line.contains('Destination: ')) {
+            final match = RegExp(r'Destination:\s+(.+\.(?:mp4|mkv|webm|m4a|mp3|flac|opus))').firstMatch(line);
+            if (match != null) {
+              downloadedFilePath ??= match.group(1);
+            }
+          } else if (line.contains('[ExtractAudio]') || line.contains('[Fixup')) {
+            talker.info('[FFmpeg/Muxer] $line');
+            currentProgress = currentProgress.copyWith(
+              status: DownloadStatus.processing,
+              percentage: 99.0,
+              currentStep: 'Procesando audio con FFmpeg...',
             );
-          } else {
+            controller.add(currentProgress);
+          } else if (line.trim().isNotEmpty) {
+            talker.debug('[yt-dlp stdout] $line');
+          }
+        });
+
+        process.stderr
+            .transform(utf8.decoder)
+            .transform(const LineSplitter())
+            .listen((line) {
+          if (line.trim().isNotEmpty) {
+            stderrBuffer.writeln(line);
+            talker.warning('[yt-dlp stderr] $line');
+          }
+        });
+
+        process.exitCode.then((code) async {
+          _activeProcess = null;
+          if (code == 0) {
+            downloadedFilePath ??= (expectedFinalPath != null && File(expectedFinalPath).existsSync())
+                ? expectedFinalPath
+                : null;
+
             talker.info('Descarga finalizada con éxito (exitCode 0)');
             controller.add(
               currentProgress.copyWith(
@@ -675,150 +730,48 @@ class DesktopProcessEngine implements IMediaEngine {
               ),
             );
             controller.close();
+          } else if (_cancelRequested) {
+            talker.info('Descarga cancelada por el usuario (exitCode $code)');
+            controller.add(
+              currentProgress.copyWith(status: DownloadStatus.cancelled, currentStep: 'Descarga cancelada'),
+            );
+            controller.close();
+          } else if (fromInfo) {
+            talker.warning('Fallo con el análisis guardado (código $code); reintentando desde la URL', stderrBuffer.toString().trim());
+            _discardInfo(url);
+            currentProgress = currentProgress.copyWith(percentage: 0.0, currentStep: 'Reintentando descarga...');
+            controller.add(currentProgress);
+            launch(fromInfo: false);
+          } else {
+            final errorMsg = stderrBuffer.toString().trim();
+            final formattedError = errorMsg.isNotEmpty
+                ? errorMsg
+                : 'El proceso yt-dlp finalizó con código de error: $code';
+
+            talker.error('Descarga fallida (exitCode $code)', formattedError);
+            controller.add(
+              currentProgress.copyWith(
+                status: DownloadStatus.error,
+                errorMessage: formattedError,
+              ),
+            );
+            controller.close();
           }
-        } else if (_cancelRequested) {
-          talker.info('Descarga cancelada por el usuario (exitCode $code)');
-          controller.add(
-            currentProgress.copyWith(status: DownloadStatus.cancelled, currentStep: 'Descarga cancelada'),
-          );
-          controller.close();
-        } else {
-          final errorMsg = stderrBuffer.toString().trim();
-          final formattedError = errorMsg.isNotEmpty
-              ? errorMsg
-              : 'El proceso yt-dlp finalizó con código de error: $code';
-
-          talker.error('Descarga fallida (exitCode $code)', formattedError);
-          controller.add(
-            currentProgress.copyWith(
-              status: DownloadStatus.error,
-              errorMessage: formattedError,
-            ),
-          );
-          controller.close();
-        }
-      });
-    }).catchError((err, st) {
-      talker.error('Excepción al invocar subproceso de yt-dlp', err, st);
-      controller.add(
-        DownloadProgress(
-          status: DownloadStatus.error,
-          errorMessage: 'No se pudo iniciar el proceso de descarga: $err',
-        ),
-      );
-      controller.close();
-    });
-
-    return controller.stream;
-  }
-
-  /// Verifica el códec del video descargado con ffprobe.
-  /// Si el códec es AV1 (av01), VP9 u otro que cause fallos en VLC/aceleración por hardware,
-  /// transcodifica la pista de video a H.264 (AVC) preservando el audio original AAC intacto (-c:a copy).
-  Future<void> _ensureH264Compatibility(
-    String filePath,
-    StreamController<DownloadProgress> controller,
-    DownloadProgress currentProgress,
-  ) async {
-    try {
-      final ffprobeBin = _getFfprobeExecutable();
-      final probeResult = await Process.run(ffprobeBin, [
-        '-v', 'error',
-        '-select_streams', 'v:0',
-        '-show_entries', 'stream=codec_name',
-        '-of', 'default=noprint_wrappers=1:nokey=1',
-        filePath,
-      ]);
-
-      final codec = probeResult.stdout.toString().trim().toLowerCase();
-      talker.info('Códec de video detectado en "$filePath": $codec');
-
-      // Si ya es H.264 / AVC, es 100% compatible y universal en VLC
-      if (codec == 'h264' || codec == 'avc1') {
-        talker.info('El video ya utiliza códec universal H.264.');
+        });
+      }).catchError((err, st) {
+        talker.error('Excepción al invocar subproceso de yt-dlp', err, st);
         controller.add(
-          currentProgress.copyWith(
-            status: DownloadStatus.completed,
-            percentage: 100.0,
-            currentStep: '¡Descarga Exitosa!',
-            outputFilePath: filePath,
+          DownloadProgress(
+            status: DownloadStatus.error,
+            errorMessage: 'No se pudo iniciar el proceso de descarga: $err',
           ),
         );
         controller.close();
-        return;
-      }
-
-      talker.warning('Códec no universal detectado ($codec). Optimizando a H.264 para reproducción garantizada en VLC...');
-      controller.add(
-        currentProgress.copyWith(
-          status: DownloadStatus.processing,
-          percentage: 99.0,
-          currentStep: 'Optimizando códec a H.264 (Universal para VLC)...',
-        ),
-      );
-
-      final tempPath = '$filePath.h264.mp4';
-      final ffmpegArgs = [
-        '-y',
-        '-i', filePath,
-        '-c:v', 'libx264',
-        '-preset', 'veryfast',
-        '-crf', '21',
-        '-pix_fmt', 'yuv420p',
-        '-c:a', 'copy',
-        tempPath,
-      ];
-
-      final ffmpegBin = _getFfmpegExecutable();
-      final transcodeProcess = await Process.start(ffmpegBin, ffmpegArgs);
-      _activeTranscodeProcess = transcodeProcess;
-
-      final transcodeExit = await transcodeProcess.exitCode;
-      _activeTranscodeProcess = null;
-
-      if (transcodeExit == 0 && File(tempPath).existsSync()) {
-        final originalFile = File(filePath);
-        final tempFile = File(tempPath);
-        originalFile.deleteSync();
-        tempFile.renameSync(filePath);
-        talker.info('Optimización a H.264 completada con éxito.');
-        controller.add(
-          currentProgress.copyWith(
-            status: DownloadStatus.completed,
-            percentage: 100.0,
-            currentStep: '¡Descarga Exitosa! (Optimizado a H.264)',
-            outputFilePath: filePath,
-          ),
-        );
-      } else {
-        talker.warning('Transcodificación a H.264 retornó código $transcodeExit. Se conserva el archivo original.');
-        if (File(tempPath).existsSync()) {
-          try {
-            File(tempPath).deleteSync();
-          } catch (_) {}
-        }
-        controller.add(
-          currentProgress.copyWith(
-            status: DownloadStatus.completed,
-            percentage: 100.0,
-            currentStep: '¡Descarga Exitosa!',
-            outputFilePath: filePath,
-          ),
-        );
-      }
-    } catch (e, st) {
-      talker.error('Error durante la verificación/optimización de códec H.264', e, st);
-      controller.add(
-        currentProgress.copyWith(
-          status: DownloadStatus.completed,
-          percentage: 100.0,
-          currentStep: '¡Descarga Exitosa!',
-          outputFilePath: filePath,
-        ),
-      );
-    } finally {
-      controller.close();
+      });
     }
+
+    launch(fromInfo: cachedInfo != null);
+    return controller.stream;
   }
 
   @override
@@ -831,11 +784,5 @@ class DesktopProcessEngine implements IMediaEngine {
       talker.warning('Error al cancelar _activeProcess: $e');
     }
     _activeProcess = null;
-    try {
-      _activeTranscodeProcess?.kill();
-    } catch (e) {
-      talker.warning('Error al cancelar _activeTranscodeProcess: $e');
-    }
-    _activeTranscodeProcess = null;
   }
 }
