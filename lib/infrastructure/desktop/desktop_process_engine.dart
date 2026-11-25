@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/logging/app_logger.dart';
 import '../../domain/models/download_destination.dart';
@@ -141,6 +142,7 @@ class DesktopProcessEngine implements IMediaEngine {
       final available = res.exitCode == 0;
       if (available) {
         talker.info('yt-dlp ($bin) versión: ${res.stdout.toString().trim()}');
+        unawaited(_updateYtDlpIfDue(bin));
       } else {
         talker.warning('yt-dlp falló con código ${res.exitCode}: ${res.stderr}');
       }
@@ -148,6 +150,34 @@ class DesktopProcessEngine implements IMediaEngine {
     } catch (e, st) {
       talker.error('Error al verificar yt-dlp ($bin) en el sistema', e, st);
       return false;
+    }
+  }
+
+  static const String _lastUpdateKey = 'ytdlp_last_update_ms';
+  static const Duration _updateInterval = Duration(hours: 24);
+
+  /// Actualiza yt-dlp (`yt-dlp -U`, canal estable) en segundo plano si pasaron 24 h desde
+  /// el último intento, como en Android: YouTube cambia a menudo y un yt-dlp viejo deja de
+  /// funcionar. Solo funciona con el binario oficial en una ruta con permiso de escritura
+  /// (ej. `~/.local/bin`); instalado con pacman/pip o en Docker, yt-dlp lo rechaza y solo
+  /// queda registrado. En Linux/Windows el binario se reemplaza sin afectar a procesos en curso.
+  Future<void> _updateYtDlpIfDue(String bin) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final last = prefs.getInt(_lastUpdateKey) ?? 0;
+      if (now - last < _updateInterval.inMilliseconds) return;
+      await prefs.setInt(_lastUpdateKey, now);
+
+      final res = await Process.run(bin, ['-U']).timeout(const Duration(minutes: 2));
+      final output = '${res.stdout}\n${res.stderr}'.trim();
+      if (res.exitCode == 0) {
+        talker.info('Actualización de yt-dlp: $output');
+      } else {
+        talker.warning('yt-dlp no se pudo actualizar (código ${res.exitCode}): $output');
+      }
+    } catch (e) {
+      talker.warning('Error al actualizar yt-dlp: $e');
     }
   }
 

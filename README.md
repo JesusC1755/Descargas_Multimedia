@@ -195,7 +195,7 @@ Si deseas compilar y ejecutar el proyecto localmente sin Docker:
 * **Flutter SDK:** Canal stable (>= 3.3.0).
 * **Herramientas de compilación C++:** `clang`, `cmake`, `ninja-build`, `pkg-config`, `libgtk-3-dev`.
 * **Herramientas de procesamiento:**
-  * `yt-dlp` (>= 2026.08) ubicado en `~/.local/bin/yt-dlp` o en `$PATH`.
+  * `yt-dlp` (>= 2026.08) ubicado en `~/.local/bin/yt-dlp` o en `$PATH`. La app lo actualiza sola (`yt-dlp -U`) como máximo una vez cada 24 h; para eso conviene el binario oficial en `~/.local/bin`, ya que instalado con pacman/pip se actualiza con el gestor de paquetes.
   * `ffmpeg` instalado en el sistema (`sudo apt install ffmpeg`).
   * `node` instalado o enlazado en `~/.local/bin/node` (para resolución de firmas JS).
 
