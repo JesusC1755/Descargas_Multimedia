@@ -20,11 +20,12 @@ class AndroidNativeEngine implements IMediaEngine {
   /// así que solo se ofrecen resoluciones con H.264 nativo, hasta 1080p.
   static const int maxVideoHeight = 1080;
 
-  /// Cliente de YouTube que usa yt-dlp en Android (`youtube:player_client=…`). `visionos`
-  /// no exige el desafío JavaScript que el teléfono resuelve con QuickJS: el análisis baja
-  /// de ~52 s a ~14 s con las mismas calidades. Si falla, el lado nativo reintenta con los
-  /// clientes por defecto de yt-dlp.
-  static const String youtubePlayerClient = 'visionos';
+  /// Cliente de YouTube que usa yt-dlp en Android (`youtube:player_client=…`).
+  /// `ios_producer` no exige el desafío JavaScript que el teléfono resuelve con QuickJS
+  /// (~10 s de análisis frente a ~52 s), sirve también para música con licencia (que
+  /// `visionos` rechaza) y no limita la velocidad por conexión (~9 MB/s). Si falla, el lado
+  /// nativo reintenta con los clientes por defecto de yt-dlp.
+  static const String youtubePlayerClient = 'ios_producer';
 
   StreamSubscription? _activeSubscription;
   bool _isInit = false;

@@ -556,7 +556,8 @@ class DesktopProcessEngine implements IMediaEngine {
         '-f',
         option.formatId,
         '-S',
-        'vcodec:h264,res,acodec:aac',
+        // `proto`: a igual resolución, HTTPS antes que HLS (m3u8 baja en fragmentos, más lento).
+        'vcodec:h264,res,proto,acodec:aac',
         '--merge-output-format',
         'mp4',
         '--remux-video',

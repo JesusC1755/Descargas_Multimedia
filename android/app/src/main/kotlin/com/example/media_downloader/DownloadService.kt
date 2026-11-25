@@ -176,7 +176,8 @@ class DownloadService : Service() {
                         addOption("--audio-quality", "0")
                     } else {
                         if (p.format.isNotEmpty()) addOption("-f", p.format)
-                        addOption("-S", "vcodec:h264,res,acodec:aac")
+                        // `proto`: a igual resolución, HTTPS antes que HLS (m3u8 baja en fragmentos).
+                        addOption("-S", "vcodec:h264,res,proto,acodec:aac")
                         addOption("--merge-output-format", "mp4")
                     }
                 }

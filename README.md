@@ -93,7 +93,7 @@ El proyecto implementa los principios de **Clean Architecture** y el patrón **H
 La app usa el mismo dominio y la misma UI; solo cambia el adaptador (`AndroidNativeEngine` + código Kotlin en `android/app/src/main/kotlin/`).
 
 * **Motor:** [`youtubedl-android`](https://github.com/JunkFood02/youtubedl-android) ejecuta yt-dlp con Python embebido, FFmpeg y QuickJS. yt-dlp se actualiza en segundo plano como máximo una vez cada 24 h.
-* **YouTube rápido:** se usa el cliente `visionos`, que no exige resolver el desafío JavaScript con QuickJS (análisis de ~50 s a ~14 s). Si falla, se reintenta con los clientes por defecto de yt-dlp.
+* **YouTube rápido:** se usa el cliente `ios_producer`, que no exige resolver el desafío JavaScript con QuickJS (análisis de ~50 s a ~10 s), funciona con música con licencia y descarga a ~9 MB/s. A igual resolución se prefiere HTTPS sobre HLS. Si falla, se reintenta con los clientes por defecto de yt-dlp.
 * **Calidades:** solo H.264 hasta 1080p, para no recodificar VP9/AV1 en el teléfono.
 * **Descarga sin repetir el análisis:** el JSON del análisis se reutiliza con `--load-info-json` (vigencia 3 h).
 * **Almacenamiento (scoped storage):** yt-dlp descarga en una carpeta privada de la app y luego el archivo se exporta:
