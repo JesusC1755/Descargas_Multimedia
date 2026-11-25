@@ -37,70 +37,9 @@ class UrlInputCard extends StatelessWidget {
       controller.text = text;
     }
 
-    final theme = Theme.of(context);
-    if (validation.isValid) {
-      final platform = validation.platform;
-      ScaffoldMessenger.of(context).clearSnackBars();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(5),
-                decoration: BoxDecoration(
-                  color: platform.brandColor.withValues(alpha: 0.22),
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: platform.brandColor.withValues(alpha: 0.45),
-                    width: 1,
-                  ),
-                ),
-                child: Icon(
-                  platform.icon,
-                  size: 16,
-                  color: platform == MediaPlatform.threads
-                      ? Colors.white
-                      : platform.brandColor,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: RichText(
-                  text: TextSpan(
-                    text: 'Enlace de ',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w400,
-                    ),
-                    children: [
-                      TextSpan(
-                        text: validation.platformDisplayName ?? platform.displayName,
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: platform.badgeTextColor,
-                        ),
-                      ),
-                      const TextSpan(text: ' pegado'),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-          backgroundColor: platform.snackbarContainerColor,
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 2),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-            side: BorderSide(
-              color: platform.brandColor.withValues(alpha: 0.45),
-              width: 1.1,
-            ),
-          ),
-        ),
-      );
-    } else {
+    // Si el enlace es válido no se avisa: el icono y la insignia de la plataforma ya lo indican.
+    if (!validation.isValid) {
+      final theme = Theme.of(context);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           backgroundColor: theme.colorScheme.errorContainer,
