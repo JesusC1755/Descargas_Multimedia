@@ -144,8 +144,8 @@ static void my_application_activate(GApplication* application) {
     }
   }
 
-  gtk_window_set_default_icon_name("com.example.media_downloader");
-  gtk_window_set_icon_name(window, "com.example.media_downloader");
+  gtk_window_set_default_icon_name("io.github.jesusc1755.mediadownloader");
+  gtk_window_set_icon_name(window, "io.github.jesusc1755.mediadownloader");
 
   FlView* view = fl_view_new(project);
   GdkRGBA background_color;

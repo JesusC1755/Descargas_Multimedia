@@ -34,17 +34,17 @@ mkdir -p "$ICON_DIR/256x256/apps"
 mkdir -p "$ICON_DIR/512x512/apps"
 
 # 2. Copiar iconos en todas las resoluciones
-cp "$PROJECT_ROOT/assets/icons/app_icon_32.png"  "$ICON_DIR/32x32/apps/com.example.media_downloader.png"
-cp "$PROJECT_ROOT/assets/icons/app_icon_64.png"  "$ICON_DIR/64x64/apps/com.example.media_downloader.png"
-cp "$PROJECT_ROOT/assets/icons/app_icon_128.png" "$ICON_DIR/128x128/apps/com.example.media_downloader.png"
-cp "$PROJECT_ROOT/assets/icons/app_icon_256.png" "$ICON_DIR/256x256/apps/com.example.media_downloader.png"
-cp "$PROJECT_ROOT/assets/icons/app_icon.png"     "$ICON_DIR/512x512/apps/com.example.media_downloader.png"
+cp "$PROJECT_ROOT/assets/icons/app_icon_32.png"  "$ICON_DIR/32x32/apps/io.github.jesusc1755.mediadownloader.png"
+cp "$PROJECT_ROOT/assets/icons/app_icon_64.png"  "$ICON_DIR/64x64/apps/io.github.jesusc1755.mediadownloader.png"
+cp "$PROJECT_ROOT/assets/icons/app_icon_128.png" "$ICON_DIR/128x128/apps/io.github.jesusc1755.mediadownloader.png"
+cp "$PROJECT_ROOT/assets/icons/app_icon_256.png" "$ICON_DIR/256x256/apps/io.github.jesusc1755.mediadownloader.png"
+cp "$PROJECT_ROOT/assets/icons/app_icon.png"     "$ICON_DIR/512x512/apps/io.github.jesusc1755.mediadownloader.png"
 
 # Copias de alias simples para compatibilidad
 cp "$PROJECT_ROOT/assets/icons/app_icon.png"     "$ICON_DIR/512x512/apps/media_downloader.png"
 
 # 3. Generar el archivo .desktop con rutas absolutas
-DESKTOP_FILE="$APPS_DIR/com.example.media_downloader.desktop"
+DESKTOP_FILE="$APPS_DIR/io.github.jesusc1755.mediadownloader.desktop"
 cat <<EOF > "$DESKTOP_FILE"
 [Desktop Entry]
 Version=1.0
@@ -52,10 +52,10 @@ Type=Application
 Name=Media Downloader
 Comment=Descargas de Audio y Video con yt-dlp y FFmpeg
 Exec=$BIN_PATH %u
-Icon=com.example.media_downloader
+Icon=io.github.jesusc1755.mediadownloader
 Terminal=false
 Categories=AudioVideo;Audio;Video;Network;
-StartupWMClass=com.example.media_downloader
+StartupWMClass=io.github.jesusc1755.mediadownloader
 Keywords=youtube;downloader;video;audio;mp3;mp4;
 EOF
 
@@ -72,5 +72,5 @@ fi
 
 echo "[✔] Integración completada con éxito."
 echo "    - Archivo de acceso directo: $DESKTOP_FILE"
-echo "    - Icono del sistema: $ICON_DIR/512x512/apps/com.example.media_downloader.png"
+echo "    - Icono del sistema: $ICON_DIR/512x512/apps/io.github.jesusc1755.mediadownloader.png"
 echo "    - Binario asociado: $BIN_PATH"

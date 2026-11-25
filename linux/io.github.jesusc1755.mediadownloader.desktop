@@ -7,5 +7,5 @@ Exec=media_downloader %u
 Icon=media_downloader
 Terminal=false
 Categories=AudioVideo;Audio;Video;Network;
-StartupWMClass=com.example.media_downloader
+StartupWMClass=io.github.jesusc1755.mediadownloader
 Keywords=youtube;downloader;video;audio;mp3;mp4;

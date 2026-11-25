@@ -7,7 +7,7 @@ project(runner LANGUAGES CXX)
 set(BINARY_NAME "media_downloader")
 # The unique GTK application identifier for this application. See:
 # https://wiki.gnome.org/HowDoI/ChooseApplicationID
-set(APPLICATION_ID "com.example.media_downloader")
+set(APPLICATION_ID "io.github.jesusc1755.mediadownloader")
 
 # Explicitly opt in to modern CMake behaviors to avoid warnings with recent
 # versions of CMake.
@@ -128,7 +128,7 @@ if(NOT CMAKE_BUILD_TYPE MATCHES "Debug")
 endif()
 
 # Copy application icon and desktop launcher into the bundle
-install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/com.example.media_downloader.desktop"
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/io.github.jesusc1755.mediadownloader.desktop"
   DESTINATION "${CMAKE_INSTALL_PREFIX}"
   COMPONENT Runtime
   OPTIONAL)
