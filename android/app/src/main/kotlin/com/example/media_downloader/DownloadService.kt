@@ -229,7 +229,7 @@ class DownloadService : Service() {
                     "step" to "¡Descarga Exitosa!",
                 )
             )
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             if (timeoutReached) {
                 emit(p, mapOf("status" to "error", "error" to "Android detuvo la descarga por superar el tiempo máximo en segundo plano."))
             } else if (cancelRequested || e is YoutubeDL.CanceledException) {

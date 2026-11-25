@@ -90,7 +90,7 @@ class MainActivity : FlutterActivity() {
                         try {
                             YtDlpEngine.ensureInitialized(applicationContext)
                             withContext(Dispatchers.Main) { result.success(true) }
-                        } catch (e: Exception) {
+                        } catch (e: Throwable) {
                             withContext(Dispatchers.Main) {
                                 result.error("INIT_ERROR", YtDlpEngine.cleanError(e.message), null)
                             }
@@ -100,7 +100,7 @@ class MainActivity : FlutterActivity() {
                         try {
                             val status = YtDlpEngine.updateIfDue(applicationContext)
                             Log.i(TAG, "Actualización de yt-dlp: $status (versión ${YtDlpEngine.version(applicationContext)})")
-                        } catch (e: Exception) {
+                        } catch (e: Throwable) {
                             Log.w(TAG, "Actualización de yt-dlp omitida: ${e.message}")
                         }
                     }
@@ -110,7 +110,7 @@ class MainActivity : FlutterActivity() {
                         try {
                             val status = YtDlpEngine.updateIfDue(applicationContext, force = true)
                             withContext(Dispatchers.Main) { result.success(status) }
-                        } catch (e: Exception) {
+                        } catch (e: Throwable) {
                             withContext(Dispatchers.Main) {
                                 result.error("UPDATE_ERROR", YtDlpEngine.cleanError(e.message), null)
                             }
@@ -130,7 +130,7 @@ class MainActivity : FlutterActivity() {
                             val playerClient = call.argument<String>("playerClient")
                             val analysis = try {
                                 YtDlpEngine.analyze(applicationContext, url, playerClient)
-                            } catch (e: Exception) {
+                            } catch (e: Throwable) {
                                 if (playerClient == null) throw e
                                 // Respaldo: clientes por defecto de yt-dlp (más lentos en el teléfono por QuickJS).
                                 Log.w(TAG, "Análisis con cliente $playerClient falló; reintentando con los de yt-dlp: ${e.message?.take(300)}")
@@ -146,7 +146,7 @@ class MainActivity : FlutterActivity() {
                                     )
                                 )
                             }
-                        } catch (e: Exception) {
+                        } catch (e: Throwable) {
                             withContext(Dispatchers.Main) {
                                 result.error("ANALYZE_ERROR", YtDlpEngine.cleanError(e.message), null)
                             }
