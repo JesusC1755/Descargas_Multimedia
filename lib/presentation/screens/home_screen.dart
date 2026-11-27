@@ -12,6 +12,7 @@ import '../../domain/models/media_info.dart';
 import '../../domain/models/stream_option.dart';
 import '../../domain/ports/media_engine_port.dart';
 import '../../infrastructure/android/android_native_engine.dart';
+import '../../infrastructure/android/shared_text.dart';
 import '../../infrastructure/media_engine_factory.dart';
 import '../controllers/download_folders_controller.dart';
 import '../widgets/ambient_mesh_background.dart';
@@ -53,6 +54,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _checkSystemRequirements();
     _loadFolders();
     _restoreActiveDownload();
+    SharedText.listen(_analyzeUrl);
   }
 
   @override
@@ -60,6 +62,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _urlController.dispose();
     _downloadSub?.cancel();
     _folders.dispose();
+    SharedText.cancel();
     super.dispose();
   }
 

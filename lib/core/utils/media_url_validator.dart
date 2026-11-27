@@ -243,7 +243,8 @@ class MediaUrlValidator {
       );
     }
 
-    final trimmed = input.trim();
+    // Al compartir desde otras apps llega "Título https://…": se usa solo el enlace.
+    final trimmed = _firstUrlIn(input) ?? input.trim();
 
     // Comprobación de protocolo básico
     final uri = Uri.tryParse(trimmed);
@@ -803,6 +804,8 @@ class MediaUrlValidator {
   }
 
   /// Limpia parámetros de rastreo y analíticas de la consulta URL.
+  static String? _firstUrlIn(String text) => RegExp(r'https?://\S+').firstMatch(text)?.group(0);
+
   static String _stripTrackingParams(Uri uri) {
     if (uri.queryParameters.isEmpty) return uri.toString();
 

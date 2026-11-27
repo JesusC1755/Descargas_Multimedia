@@ -32,10 +32,15 @@ class MainActivity : FlutterActivity() {
     private val PROGRESS_CHANNEL = "com.example.media_downloader/download_progress"
 
     private val PERMISSIONS_CHANNEL = "com.example.media_downloader/permissions"
+    private val SHARE_CHANNEL = "com.example.media_downloader/share"
 
     private val PICK_FOLDER_REQUEST_CODE = 8844
     private var pendingFolderResult: MethodChannel.Result? = null
     private val appPermissions = AppPermissions(this)
+
+    /** Texto compartido con el que se abrió la app, hasta que Flutter lo recoge. */
+    private var pendingSharedText: String? = null
+    private var shareChannel: MethodChannel? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -72,7 +77,20 @@ class MainActivity : FlutterActivity() {
             }
         }
 
-        // 3. Canal de streaming de progreso de descarga
+        // 3. Canal de enlaces compartidos desde otras apps
+        pendingSharedText = sharedTextOf(intent)
+        shareChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SHARE_CHANNEL).apply {
+            setMethodCallHandler { call, result ->
+                if (call.method == "takeSharedText") {
+                    result.success(pendingSharedText)
+                    pendingSharedText = null
+                } else {
+                    result.notImplemented()
+                }
+            }
+        }
+
+        // 4. Canal de streaming de progreso de descarga
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, PROGRESS_CHANNEL).setStreamHandler(
             object : EventChannel.StreamHandler {
                 // Reenvía a Flutter el estado que publica DownloadService (cada evento lleva su "id").
@@ -95,7 +113,7 @@ class MainActivity : FlutterActivity() {
             }
         )
 
-        // 4. Canal del motor multimedia nativo (youtubedl-android)
+        // 5. Canal del motor multimedia nativo (youtubedl-android)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, ENGINE_CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
                 "init" -> {
@@ -229,6 +247,19 @@ class MainActivity : FlutterActivity() {
         DownloadService.workRoot(applicationContext).listFiles()?.forEach { dir ->
             if (dir.name != active) dir.deleteRecursively()
         }
+    }
+
+    /** Con la app ya abierta, el enlace compartido llega aquí (la actividad es singleTop). */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        sharedTextOf(intent)?.let { shareChannel?.invokeMethod("sharedText", it) }
+    }
+
+    /** Texto de ACTION_SEND; se ignora si la app se reabre desde Recientes con el intent original. */
+    private fun sharedTextOf(intent: Intent?): String? {
+        if (intent?.action != Intent.ACTION_SEND) return null
+        if (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0) return null
+        return intent.getStringExtra(Intent.EXTRA_TEXT)?.takeIf { it.isNotBlank() }
     }
 
     override fun onDestroy() {

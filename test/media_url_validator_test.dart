@@ -15,6 +15,13 @@ void main() {
       expect(res.errorMessage, contains('no es una dirección web válida'));
     });
 
+    test('Extrae el enlace del texto que comparten otras apps', () {
+      final res = MediaUrlValidator.validate('Mira este video: https://youtu.be/dQw4w9WgXcQ?si=abc compartido');
+      expect(res.isValid, isTrue);
+      expect(res.cleanUrl, contains('dQw4w9WgXcQ'));
+      expect(res.cleanUrl, isNot(contains(' ')));
+    });
+
     test('Rechaza dominios web que no son plataformas de video', () {
       final resGoogle = MediaUrlValidator.validate('https://www.google.com/search?q=flutter');
       expect(resGoogle.isValid, isFalse);
