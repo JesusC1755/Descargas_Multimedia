@@ -40,7 +40,8 @@ class AppPermissions(private val activity: Activity) {
     private val pending = mutableMapOf<Int, MethodChannel.Result>()
 
     /** Permisos ya pedidos alguna vez (para distinguir "nunca pedido" de "denegado para siempre"). */
-    private val asked = activity.getSharedPreferences("permissions_asked", Context.MODE_PRIVATE)
+    /** Diferido: esta clase se crea junto con la actividad, antes de que tenga contexto. */
+    private val asked by lazy { activity.getSharedPreferences("permissions_asked", Context.MODE_PRIVATE) }
 
     fun status(): Map<String, String> = mapOf(
         STORAGE to when {
