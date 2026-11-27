@@ -17,3 +17,8 @@
 -dontwarn org.brotli.dec.**
 -dontwarn com.github.luben.zstd.**
 -dontwarn org.objectweb.asm.**
+
+# Métodos JNI de Mp3Encoder (libmp3lame_jni.so): R8 no debe renombrarlos.
+-keepclasseswithmembernames class com.example.media_downloader.Mp3Encoder {
+    native <methods>;
+}
