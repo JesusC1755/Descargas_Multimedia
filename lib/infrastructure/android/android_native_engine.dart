@@ -10,11 +10,11 @@ import '../../domain/models/media_info.dart';
 import '../../domain/models/stream_option.dart';
 import '../../domain/ports/media_engine_port.dart';
 import '../desktop/desktop_process_engine.dart';
+import 'device_permissions.dart';
 
 class AndroidNativeEngine implements IMediaEngine {
   static const MethodChannel _channel = MethodChannel('com.example.media_downloader/engine');
   static const EventChannel _eventChannel = EventChannel('com.example.media_downloader/download_progress');
-  static const MethodChannel _folderChannel = MethodChannel('com.example.media_downloader/folder_picker');
 
   /// En Android no se recodifica VP9/AV1 → H.264 (lento y costoso en batería),
   /// así que solo se ofrecen resoluciones con H.264 nativo, hasta 1080p.
@@ -130,8 +130,7 @@ class AndroidNativeEngine implements IMediaEngine {
     Future<void> start() async {
       // Android 7–9 necesita permiso para escribir en Download/ (desde Android 10 se usa MediaStore).
       if (destination.androidTreeUri == null) {
-        final granted = await _folderChannel.invokeMethod<bool>('ensureStoragePermission') ?? false;
-        if (!granted) {
+        if (!await DevicePermissions.request(AppPermission.storage)) {
           throw PlatformException(
             code: 'PERMISSION_DENIED',
             message: 'Se necesita permiso de almacenamiento para guardar en Descargas.',
@@ -139,7 +138,7 @@ class AndroidNativeEngine implements IMediaEngine {
         }
       }
       // Android 13+: notificación de progreso. Si se deniega, la descarga sigue igual.
-      await _channel.invokeMethod<bool>('ensureNotificationPermission');
+      await DevicePermissions.request(AppPermission.notifications);
       await _channel.invokeMethod('download', {
         'id': id,
         'url': url,

@@ -1,9 +1,12 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../../domain/models/stream_option.dart';
+import '../../infrastructure/android/device_permissions.dart';
 import '../controllers/download_folders_controller.dart';
 
-/// Hoja de ajustes: carpetas de descarga de video y audio.
+/// Hoja de ajustes: carpetas de descarga de video y audio y, en Android, permisos.
 Future<void> showSettingsSheet(BuildContext context, {required DownloadFoldersController folders}) {
   return showModalBottomSheet<void>(
     context: context,
@@ -54,6 +57,10 @@ class _SettingsSheet extends StatelessWidget {
                   ),
               ],
             ),
+            if (Platform.isAndroid) ...[
+              const SizedBox(height: 24),
+              const _PermissionsSection(),
+            ],
           ],
         ),
       ),
@@ -190,5 +197,115 @@ class _FolderRow extends StatelessWidget {
     if (!await folders.open(type)) {
       messenger.showSnackBar(const SnackBar(content: Text('No se encontró un explorador de archivos compatible.')));
     }
+  }
+}
+
+/// Estado de los permisos de Android; se actualiza al volver de los ajustes del sistema.
+class _PermissionsSection extends StatefulWidget {
+  const _PermissionsSection();
+
+  @override
+  State<_PermissionsSection> createState() => _PermissionsSectionState();
+}
+
+class _PermissionsSectionState extends State<_PermissionsSection> {
+  late final AppLifecycleListener _lifecycle;
+  Map<AppPermission, PermissionState> _status = const {};
+
+  @override
+  void initState() {
+    super.initState();
+    _lifecycle = AppLifecycleListener(onResume: _refresh);
+    _refresh();
+  }
+
+  @override
+  void dispose() {
+    _lifecycle.dispose();
+    super.dispose();
+  }
+
+  Future<void> _refresh() async {
+    final status = await DevicePermissions.status();
+    if (mounted) setState(() => _status = status);
+  }
+
+  Future<void> _request(AppPermission permission) async {
+    await DevicePermissions.request(permission, openSettings: true);
+    await _refresh();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SettingsSection(
+      title: 'Permisos',
+      children: [
+        _row(
+          AppPermission.storage,
+          icon: Icons.verified_user_rounded,
+          title: 'Permiso de almacenamiento',
+          granted: 'Concedido · Lectura y escritura lista',
+          notRequired: 'No necesario · Android 10+ guarda sin permisos',
+          denied: 'Toca para permitir guardar en Descargas',
+        ),
+        _row(
+          AppPermission.notifications,
+          icon: Icons.notifications_rounded,
+          title: 'Notificaciones',
+          granted: 'Activadas · Progreso de las descargas',
+          denied: 'Toca para ver el progreso en la barra',
+        ),
+        _row(
+          AppPermission.battery,
+          icon: Icons.battery_charging_full_rounded,
+          title: 'Segundo plano (batería)',
+          granted: 'Sin restricciones · Las descargas no se cortan',
+          denied: 'Toca para evitar cierres en segundo plano',
+        ),
+      ],
+    );
+  }
+
+  Widget _row(
+    AppPermission permission, {
+    required IconData icon,
+    required String title,
+    required String granted,
+    required String denied,
+    String? notRequired,
+  }) {
+    final state = _status[permission];
+    final ok = state == PermissionState.granted || state == PermissionState.notRequired;
+    final color = state == null ? const Color(0xFF94A3B8) : (ok ? const Color(0xFF34D399) : const Color(0xFFFBBF24));
+    final subtitle = switch (state) {
+      PermissionState.granted => granted,
+      PermissionState.notRequired => notRequired ?? granted,
+      PermissionState.denied => denied,
+      null => '…',
+    };
+
+    return InkWell(
+      onTap: state == PermissionState.denied ? () => _request(permission) : null,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        child: Row(
+          children: [
+            SettingsIcon(icon: icon, color: color),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white)),
+                  const SizedBox(height: 2),
+                  Text(subtitle, style: TextStyle(fontSize: 12, color: color)),
+                ],
+              ),
+            ),
+            if (state == PermissionState.denied) const Icon(Icons.chevron_right_rounded, color: Color(0xFF94A3B8)),
+          ],
+        ),
+      ),
+    );
   }
 }

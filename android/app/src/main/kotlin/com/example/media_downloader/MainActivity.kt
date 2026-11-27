@@ -1,10 +1,8 @@
 package com.example.media_downloader
 
-import android.Manifest
 import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.DocumentsContract
@@ -33,12 +31,11 @@ class MainActivity : FlutterActivity() {
     private val ENGINE_CHANNEL = "com.example.media_downloader/engine"
     private val PROGRESS_CHANNEL = "com.example.media_downloader/download_progress"
 
+    private val PERMISSIONS_CHANNEL = "com.example.media_downloader/permissions"
+
     private val PICK_FOLDER_REQUEST_CODE = 8844
-    private val STORAGE_PERMISSION_REQUEST_CODE = 8845
-    private val NOTIFICATION_PERMISSION_REQUEST_CODE = 8846
     private var pendingFolderResult: MethodChannel.Result? = null
-    private var pendingPermissionResult: MethodChannel.Result? = null
-    private var pendingNotificationResult: MethodChannel.Result? = null
+    private val appPermissions = AppPermissions(this)
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -52,7 +49,6 @@ class MainActivity : FlutterActivity() {
                     val uri = call.argument<String>("uri")
                     result.success(uri != null && MediaExporter.hasTreeAccess(applicationContext, uri))
                 }
-                "ensureStoragePermission" -> ensureStoragePermission(result)
                 "openFolder" -> result.success(openFolder(call.argument<String>("treeUri"), call.argument<String>("subdir")))
                 "releaseUnusedFolders" -> {
                     val keep = call.argument<List<String>>("keep").orEmpty().map(Uri::parse).toSet()
@@ -63,7 +59,20 @@ class MainActivity : FlutterActivity() {
             }
         }
 
-        // 2. Canal de streaming de progreso de descarga
+        // 2. Canal de permisos (almacenamiento, notificaciones y batería)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, PERMISSIONS_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "status" -> result.success(appPermissions.status())
+                "request" -> appPermissions.request(
+                    call.argument<String>("name") ?: "",
+                    call.argument<Boolean>("openSettings") ?: false,
+                    result,
+                )
+                else -> result.notImplemented()
+            }
+        }
+
+        // 3. Canal de streaming de progreso de descarga
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, PROGRESS_CHANNEL).setStreamHandler(
             object : EventChannel.StreamHandler {
                 // Reenvía a Flutter el estado que publica DownloadService (cada evento lleva su "id").
@@ -86,7 +95,7 @@ class MainActivity : FlutterActivity() {
             }
         )
 
-        // 3. Canal del motor multimedia nativo (youtubedl-android)
+        // 4. Canal del motor multimedia nativo (youtubedl-android)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, ENGINE_CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
                 "init" -> {
@@ -174,7 +183,6 @@ class MainActivity : FlutterActivity() {
                     result.success(true)
                 }
                 "getActiveDownload" -> result.success(DownloadStateHolder.pendingSnapshot()?.event)
-                "ensureNotificationPermission" -> ensureNotificationPermission(result)
                 else -> result.notImplemented()
             }
         }
@@ -221,22 +229,6 @@ class MainActivity : FlutterActivity() {
         DownloadService.workRoot(applicationContext).listFiles()?.forEach { dir ->
             if (dir.name != active) dir.deleteRecursively()
         }
-    }
-
-    /** Android 13+: permiso para mostrar la notificación de progreso. Sin él la descarga funciona igual. */
-    private fun ensureNotificationPermission(result: MethodChannel.Result) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-        ) {
-            result.success(true)
-            return
-        }
-        if (pendingNotificationResult != null) {
-            result.success(false)
-            return
-        }
-        pendingNotificationResult = result
-        requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), NOTIFICATION_PERMISSION_REQUEST_CODE)
     }
 
     override fun onDestroy() {
@@ -291,35 +283,9 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    /** Solo Android 7–9 necesita permiso para escribir en Download/; desde Android 10 se usa MediaStore. */
-    private fun ensureStoragePermission(result: MethodChannel.Result) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ||
-            checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
-        ) {
-            result.success(true)
-            return
-        }
-        if (pendingPermissionResult != null) {
-            result.error("ALREADY_ACTIVE", "Ya se está solicitando el permiso", null)
-            return
-        }
-        pendingPermissionResult = result
-        requestPermissions(arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE), STORAGE_PERMISSION_REQUEST_CODE)
-    }
-
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
-        when (requestCode) {
-            STORAGE_PERMISSION_REQUEST_CODE -> {
-                pendingPermissionResult?.success(granted)
-                pendingPermissionResult = null
-            }
-            NOTIFICATION_PERMISSION_REQUEST_CODE -> {
-                pendingNotificationResult?.success(granted)
-                pendingNotificationResult = null
-            }
-        }
+        appPermissions.onRequestPermissionsResult(requestCode, grantResults)
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
