@@ -24,21 +24,28 @@ import kotlin.coroutines.resume
  * arbitrarias: `Movies/` rechaza archivos que no sean video (como los `.part` de yt-dlp)
  * y la tarjeta SD no admite escritura por ruta. Por eso se usan las API oficiales:
  * - Carpeta elegida por el usuario → SAF (`DocumentsContract.createDocument`).
- * - Carpeta predeterminada → MediaStore `Download/` (API 29+) o copia directa (API 24–28).
+ * - Carpeta predeterminada → MediaStore `Download/<subdir>` (API 29+) o copia directa (API 24–28).
  */
 object MediaExporter {
 
     data class Exported(val uri: Uri, val displayPath: String)
 
-    val defaultDisplayPath: String
-        get() = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).absolutePath
+    private val downloadsDir: File
+        get() = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
 
-    suspend fun export(context: Context, source: File, treeUri: String?): Exported {
+    val defaultDisplayPath: String
+        get() = downloadsDir.absolutePath
+
+    private fun downloadsDir(subdir: String?) = if (subdir == null) downloadsDir else File(downloadsDir, subdir)
+
+    /** [subdir]: subcarpeta dentro de `Download/` (ej. `MediaDownloader/Video`) si no hay [treeUri]. */
+    suspend fun export(context: Context, source: File, treeUri: String?, subdir: String?): Exported {
         val mime = mimeTypeFor(source)
+        val relative = subdir?.trim('/')?.takeIf { it.isNotEmpty() }
         return when {
             treeUri != null -> exportToTree(context, source, Uri.parse(treeUri), mime)
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> exportToMediaStore(context, source, mime)
-            else -> exportLegacy(context, source, mime)
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> exportToMediaStore(context, source, mime, relative)
+            else -> exportLegacy(context, source, mime, relative)
         }
     }
 
@@ -48,11 +55,11 @@ object MediaExporter {
         return context.contentResolver.persistedUriPermissions.any { it.uri == uri && it.isWritePermission }
     }
 
-    /** Conserva solo el permiso de la carpeta activa (Android limita cuántos se pueden persistir). */
-    fun releaseOtherTreePermissions(context: Context, keep: Uri) {
+    /** Conserva solo los permisos de las carpetas en uso (Android limita cuántos se pueden persistir). */
+    fun releaseUnusedTreePermissions(context: Context, keep: Set<Uri>) {
         val resolver = context.contentResolver
         resolver.persistedUriPermissions
-            .filter { it.uri != keep }
+            .filter { it.uri !in keep }
             .forEach {
                 try {
                     resolver.releasePersistableUriPermission(
@@ -68,7 +75,7 @@ object MediaExporter {
      * Intents para abrir la carpeta de destino en un explorador de archivos, en orden de
      * preferencia. No existe una forma estándar, así que se prueban varias.
      */
-    fun openFolderIntents(treeUri: String?): List<Intent> {
+    fun openFolderIntents(treeUri: String?, subdir: String?): List<Intent> {
         val flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
         val dirType = DocumentsContract.Document.MIME_TYPE_DIR
         val intents = mutableListOf<Intent>()
@@ -83,11 +90,11 @@ object MediaExporter {
                 .setDataAndType(DocumentsContract.buildDocumentUriUsingTree(tree, docId), dirType)
                 .addFlags(flags)
         } else {
+            // La subcarpeta solo existe tras la primera descarga; si no, se abre Download/.
+            val relative = subdir?.trim('/')?.takeIf { it.isNotEmpty() && File(downloadsDir, it).isDirectory }
+            val path = listOfNotNull(Environment.DIRECTORY_DOWNLOADS, relative).joinToString("/")
             intents += Intent(Intent.ACTION_VIEW)
-                .setDataAndType(
-                    DocumentsContract.buildDocumentUri(EXTERNAL_STORAGE_AUTHORITY, "primary:${Environment.DIRECTORY_DOWNLOADS}"),
-                    dirType,
-                )
+                .setDataAndType(DocumentsContract.buildDocumentUri(EXTERNAL_STORAGE_AUTHORITY, "primary:$path"), dirType)
                 .addFlags(flags)
             intents += Intent(DownloadManager.ACTION_VIEW_DOWNLOADS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
@@ -136,12 +143,13 @@ object MediaExporter {
         return Exported(created, "${displayPathForTree(treeUri)}/$name")
     }
 
-    private fun exportToMediaStore(context: Context, source: File, mime: String): Exported {
+    private fun exportToMediaStore(context: Context, source: File, mime: String, subdir: String?): Exported {
         val resolver = context.contentResolver
+        val relativePath = listOfNotNull(Environment.DIRECTORY_DOWNLOADS, subdir).joinToString("/") + "/"
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, source.name)
             put(MediaStore.MediaColumns.MIME_TYPE, mime)
-            put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/")
+            put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
             put(MediaStore.MediaColumns.IS_PENDING, 1)
         }
         val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
@@ -155,13 +163,14 @@ object MediaExporter {
         }
         // MediaStore también renombra con " (1)" si el nombre ya existe.
         val name = queryDisplayName(context, uri) ?: source.name
-        return Exported(uri, "$defaultDisplayPath/$name")
+        val dir = downloadsDir(subdir)
+        return Exported(uri, File(dir, name).absolutePath)
     }
 
     @Suppress("DEPRECATION")
-    private suspend fun exportLegacy(context: Context, source: File, mime: String): Exported {
-        val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-        if (!dir.exists() && !dir.mkdirs()) throw IOException("No se pudo crear la carpeta Descargas")
+    private suspend fun exportLegacy(context: Context, source: File, mime: String, subdir: String?): Exported {
+        val dir = downloadsDir(subdir)
+        if (!dir.exists() && !dir.mkdirs()) throw IOException("No se pudo crear la carpeta ${dir.absolutePath}")
         val target = uniqueFile(dir, source.name)
         source.copyTo(target)
         val uri = scanFile(context, target, mime) ?: Uri.fromFile(target)

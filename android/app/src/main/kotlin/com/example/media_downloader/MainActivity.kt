@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.provider.DocumentsContract
 import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -45,14 +46,19 @@ class MainActivity : FlutterActivity() {
         // 1. Canal de carpetas de destino (SAF)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, FOLDER_CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
-                "pickFolder" -> pickFolder(result)
+                "pickFolder" -> pickFolder(call.argument<String>("initialUri"), result)
                 "getDefaultDestination" -> result.success(MediaExporter.defaultDisplayPath)
                 "checkTreeAccess" -> {
                     val uri = call.argument<String>("uri")
                     result.success(uri != null && MediaExporter.hasTreeAccess(applicationContext, uri))
                 }
                 "ensureStoragePermission" -> ensureStoragePermission(result)
-                "openFolder" -> result.success(openFolder(call.argument<String>("treeUri")))
+                "openFolder" -> result.success(openFolder(call.argument<String>("treeUri"), call.argument<String>("subdir")))
+                "releaseUnusedFolders" -> {
+                    val keep = call.argument<List<String>>("keep").orEmpty().map(Uri::parse).toSet()
+                    MediaExporter.releaseUnusedTreePermissions(applicationContext, keep)
+                    result.success(null)
+                }
                 else -> result.notImplemented()
             }
         }
@@ -198,6 +204,7 @@ class MainActivity : FlutterActivity() {
                     isAudioOnly = args["isAudioOnly"] as? Boolean ?: false,
                     audioFormat = args["audioFormat"] as? String ?: "mp3",
                     treeUri = args["treeUri"] as? String,
+                    subdir = args["subdir"] as? String,
                     playerClient = args["playerClient"] as? String,
                 ),
             )
@@ -240,9 +247,9 @@ class MainActivity : FlutterActivity() {
     }
 
     /** Abre la carpeta en el primer explorador de archivos que acepte alguno de los intents. */
-    private fun openFolder(treeUri: String?): Boolean {
+    private fun openFolder(treeUri: String?, subdir: String?): Boolean {
         val intents = try {
-            MediaExporter.openFolderIntents(treeUri)
+            MediaExporter.openFolderIntents(treeUri, subdir)
         } catch (e: Exception) {
             Log.w(TAG, "URI de carpeta inválido: ${e.message}")
             return false
@@ -259,7 +266,8 @@ class MainActivity : FlutterActivity() {
         return false
     }
 
-    private fun pickFolder(result: MethodChannel.Result) {
+    /** Selector de carpetas del sistema (SAF); [initialUri] abre el selector en la carpeta actual. */
+    private fun pickFolder(initialUri: String?, result: MethodChannel.Result) {
         if (pendingFolderResult != null) {
             result.error("ALREADY_ACTIVE", "Un selector ya está activo", null)
             return
@@ -270,6 +278,11 @@ class MainActivity : FlutterActivity() {
                 flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or
                     Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
                     Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+                if (initialUri != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    val tree = Uri.parse(initialUri)
+                    val document = DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
+                    putExtra(DocumentsContract.EXTRA_INITIAL_URI, document)
+                }
             }
             startActivityForResult(intent, PICK_FOLDER_REQUEST_CODE)
         } catch (e: Exception) {
@@ -322,7 +335,6 @@ class MainActivity : FlutterActivity() {
                     uri,
                     Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                 )
-                MediaExporter.releaseOtherTreePermissions(applicationContext, uri)
                 pendingFolderResult?.success(
                     mapOf("uri" to uri.toString(), "path" to MediaExporter.displayPathForTree(uri))
                 )

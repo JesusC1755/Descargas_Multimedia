@@ -129,7 +129,7 @@ class AndroidNativeEngine implements IMediaEngine {
 
     Future<void> start() async {
       // Android 7–9 necesita permiso para escribir en Download/ (desde Android 10 se usa MediaStore).
-      if (destination.isAndroidDefault) {
+      if (destination.androidTreeUri == null) {
         final granted = await _folderChannel.invokeMethod<bool>('ensureStoragePermission') ?? false;
         if (!granted) {
           throw PlatformException(
@@ -149,6 +149,7 @@ class AndroidNativeEngine implements IMediaEngine {
         'audioFormat': option.extension,
         'baseName': baseName,
         'treeUri': destination.androidTreeUri,
+        'subdir': destination.androidSubdir,
         'playerClient': youtubePlayerClient,
       });
     }

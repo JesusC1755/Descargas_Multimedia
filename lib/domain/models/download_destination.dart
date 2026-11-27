@@ -4,20 +4,20 @@ import 'dart:convert';
 ///
 /// - Escritorio: [displayPath] es la ruta real donde escribe el motor.
 /// - Android: los archivos se descargan en una carpeta privada de la app y luego se
-///   exportan. Si [androidTreeUri] es nulo se usa la carpeta pública `Download/`
-///   (MediaStore); si no, se exporta a esa carpeta elegida por SAF (`content://…`).
-///   [displayPath] solo sirve para mostrarla al usuario.
+///   exportan. Si [androidTreeUri] es nulo se usa la carpeta pública `Download/` (MediaStore),
+///   o su subcarpeta [androidSubdir]; si no, se exporta a la carpeta elegida por SAF
+///   (`content://…`). [displayPath] solo sirve para mostrarla al usuario.
 class DownloadDestination {
   final String displayPath;
   final String? androidTreeUri;
+  final String? androidSubdir;
 
-  const DownloadDestination({required this.displayPath, this.androidTreeUri});
-
-  bool get isAndroidDefault => androidTreeUri == null;
+  const DownloadDestination({required this.displayPath, this.androidTreeUri, this.androidSubdir});
 
   String toJson() => jsonEncode({
         'displayPath': displayPath,
         if (androidTreeUri != null) 'androidTreeUri': androidTreeUri,
+        if (androidSubdir != null) 'androidSubdir': androidSubdir,
       });
 
   static DownloadDestination? fromJson(String? raw) {
@@ -28,7 +28,12 @@ class DownloadDestination {
       final path = map['displayPath'];
       if (path is! String || path.isEmpty) return null;
       final uri = map['androidTreeUri'];
-      return DownloadDestination(displayPath: path, androidTreeUri: uri is String ? uri : null);
+      final subdir = map['androidSubdir'];
+      return DownloadDestination(
+        displayPath: path,
+        androidTreeUri: uri is String ? uri : null,
+        androidSubdir: subdir is String ? subdir : null,
+      );
     } catch (_) {
       return null;
     }
@@ -38,8 +43,9 @@ class DownloadDestination {
   bool operator ==(Object other) =>
       other is DownloadDestination &&
       other.displayPath == displayPath &&
-      other.androidTreeUri == androidTreeUri;
+      other.androidTreeUri == androidTreeUri &&
+      other.androidSubdir == androidSubdir;
 
   @override
-  int get hashCode => Object.hash(displayPath, androidTreeUri);
+  int get hashCode => Object.hash(displayPath, androidTreeUri, androidSubdir);
 }

@@ -1,27 +1,25 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:talker_flutter/talker_flutter.dart';
 
 import '../../core/logging/app_logger.dart';
 import '../../core/utils/media_url_validator.dart';
-import '../../domain/models/download_destination.dart';
 import '../../domain/models/download_progress.dart';
 import '../../domain/models/media_info.dart';
 import '../../domain/models/stream_option.dart';
 import '../../domain/ports/media_engine_port.dart';
 import '../../infrastructure/android/android_native_engine.dart';
 import '../../infrastructure/media_engine_factory.dart';
+import '../controllers/download_folders_controller.dart';
 import '../widgets/ambient_mesh_background.dart';
 import '../widgets/download_progress_card.dart';
 import '../widgets/media_preview_card.dart';
 import '../widgets/media_preview_skeleton.dart';
 import '../widgets/quality_selector_card.dart';
+import '../widgets/settings_sheet.dart';
 import '../widgets/url_input_card.dart';
 
 /// Pantalla principal adaptativa de Media Downloader.
@@ -47,18 +45,13 @@ class _HomeScreenState extends State<HomeScreen> {
   StreamSubscription<DownloadProgress>? _downloadSub;
   StreamOption? _lastSelectedOption;
 
-  static const String _destinationPrefsKey = 'download_destination';
-
-  DownloadDestination? _destination;
-
-  /// Ruta visible de la carpeta de destino (vacía mientras se determina).
-  String get _downloadDirectory => _destination?.displayPath ?? '';
+  final DownloadFoldersController _folders = DownloadFoldersController();
 
   @override
   void initState() {
     super.initState();
     _checkSystemRequirements();
-    _initDestination();
+    _loadFolders();
     _restoreActiveDownload();
   }
 
@@ -66,6 +59,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void dispose() {
     _urlController.dispose();
     _downloadSub?.cancel();
+    _folders.dispose();
     super.dispose();
   }
 
@@ -77,65 +71,11 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!ffmpeg) talker.warning('FFmpeg no fue detectado en las rutas del sistema.');
   }
 
-  /// Carga la carpeta guardada; si ya no es accesible vuelve a la predeterminada.
-  Future<void> _initDestination() async {
-    final prefs = await SharedPreferences.getInstance();
-    final saved = DownloadDestination.fromJson(prefs.getString(_destinationPrefsKey));
-
-    if (saved != null) {
-      if (await _isDestinationAccessible(saved)) {
-        if (mounted) setState(() => _destination = saved);
-        talker.info('Carpeta de destino restaurada: ${saved.displayPath}');
-        return;
-      }
-      talker.warning('Sin acceso a la carpeta guardada (${saved.displayPath}); se usará la predeterminada.');
-      await prefs.remove(_destinationPrefsKey);
-      _showInfoSnackBar('Ya no hay acceso a "${saved.displayPath}". Se usará la carpeta Descargas.');
+  Future<void> _loadFolders() async {
+    final lost = await _folders.load();
+    if (lost.isNotEmpty) {
+      _showInfoSnackBar('Ya no hay acceso a "${lost.first}". Se usará la carpeta predeterminada.');
     }
-
-    final fallback = await _defaultDestination();
-    if (mounted) setState(() => _destination = fallback);
-    talker.info('Carpeta de destino predeterminada: ${fallback.displayPath}');
-  }
-
-  Future<bool> _isDestinationAccessible(DownloadDestination d) async {
-    try {
-      if (Platform.isAndroid) {
-        if (d.androidTreeUri == null) return true;
-        return await _folderChannel.invokeMethod<bool>('checkTreeAccess', {'uri': d.androidTreeUri}) ?? false;
-      }
-      return Directory(d.displayPath).existsSync();
-    } catch (e) {
-      talker.warning('No se pudo verificar la carpeta de destino: $e');
-      return false;
-    }
-  }
-
-  Future<DownloadDestination> _defaultDestination() async {
-    if (Platform.isAndroid) {
-      // path_provider devuelve en Android una carpeta privada de la app (Android/data/…),
-      // invisible para la galería; la predeterminada real es Download/ vía MediaStore.
-      final path = await _folderChannel.invokeMethod<String>('getDefaultDestination');
-      return DownloadDestination(displayPath: path ?? '/storage/emulated/0/Download');
-    }
-
-    try {
-      final dir = await getDownloadsDirectory();
-      if (dir != null) return DownloadDestination(displayPath: dir.path);
-    } catch (_) {}
-
-    final home = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '';
-    final es = Directory('$home${Platform.pathSeparator}Descargas');
-    return DownloadDestination(
-      displayPath: es.existsSync() ? es.path : '$home${Platform.pathSeparator}Downloads',
-    );
-  }
-
-  Future<void> _setDestination(DownloadDestination destination) async {
-    setState(() => _destination = destination);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_destinationPrefsKey, destination.toJson());
-    talker.info('Carpeta de destino guardada: ${destination.displayPath}');
   }
 
   void _showInfoSnackBar(String message) {
@@ -150,277 +90,14 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  static StreamType _typeOf(StreamOption? option) =>
+      option?.isAudioOnly == true ? StreamType.audioOnly : StreamType.video;
+
+  /// Abre la carpeta donde se guardó la última descarga.
   Future<void> _openDownloadsFolder() async {
-    if (_downloadDirectory.isEmpty) return;
-    try {
-      if (Platform.isLinux) {
-        await Process.run('xdg-open', [_downloadDirectory]);
-      } else if (Platform.isWindows) {
-        await Process.run('explorer.exe', [_downloadDirectory]);
-      } else if (Platform.isMacOS) {
-        await Process.run('open', [_downloadDirectory]);
-      } else if (Platform.isAndroid) {
-        final opened = await _folderChannel.invokeMethod<bool>('openFolder', {
-              'treeUri': _destination?.androidTreeUri,
-            }) ??
-            false;
-        if (!opened) {
-          _showInfoSnackBar('No se encontró un explorador de archivos compatible. Guardado en: $_downloadDirectory');
-        }
-      }
-    } catch (e) {
-      talker.warning('No se pudo abrir el explorador de archivos: $e');
+    if (!await _folders.open(_typeOf(_lastSelectedOption))) {
+      _showInfoSnackBar('No se encontró un explorador de archivos compatible.');
     }
-  }
-
-  static const MethodChannel _folderChannel = MethodChannel('com.example.media_downloader/folder_picker');
-
-  Future<DownloadDestination?> _openNativeFolderPicker() async {
-    final path = await _pickDesktopFolderPath();
-    return path == null ? null : DownloadDestination(displayPath: path);
-  }
-
-  /// Android: carpeta elegida con SAF. Se guarda el URI (con permiso persistente) para
-  /// escribir con DocumentsContract; la ruta solo se muestra.
-  Future<DownloadDestination?> _pickAndroidFolder() async {
-    try {
-      final picked = await _folderChannel.invokeMapMethod<String, dynamic>('pickFolder');
-      final uri = picked?['uri'] as String?;
-      if (uri == null) return null;
-      return DownloadDestination(displayPath: picked?['path'] as String? ?? uri, androidTreeUri: uri);
-    } on PlatformException catch (e) {
-      talker.warning('Error en selector de carpetas de Android: ${e.message}');
-      _showInfoSnackBar(e.message ?? 'No se pudo seleccionar la carpeta.');
-      return null;
-    }
-  }
-
-  Future<String?> _pickDesktopFolderPath() async {
-    try {
-      if (Platform.isLinux) {
-        final result = await Process.run('zenity', [
-          '--file-selection',
-          '--directory',
-          '--title=Seleccionar carpeta de descargas',
-          if (_downloadDirectory.isNotEmpty) '--filename=$_downloadDirectory/',
-        ]);
-        if (result.exitCode == 0) {
-          final out = result.stdout.toString().trim();
-          if (out.isNotEmpty && Directory(out).existsSync()) return out;
-        }
-      } else if (Platform.isWindows) {
-        final script = '[System.Reflection.Assembly]::LoadWithPartialName("System.windows.forms") | Out-Null; '
-            '\$dlg = New-Object System.Windows.Forms.FolderBrowserDialog; '
-            '\$dlg.Description = "Seleccionar carpeta de descargas"; '
-            'if(\$dlg.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK){ Write-Output \$dlg.SelectedPath }';
-        final result = await Process.run('powershell', ['-NoProfile', '-Command', script]);
-        if (result.exitCode == 0) {
-          final out = result.stdout.toString().trim();
-          if (out.isNotEmpty && Directory(out).existsSync()) return out;
-        }
-      } else if (Platform.isMacOS) {
-        final result = await Process.run('osascript', [
-          '-e',
-          'POSIX path of (choose folder with prompt "Seleccionar carpeta de descargas")',
-        ]);
-        if (result.exitCode == 0) {
-          final out = result.stdout.toString().trim();
-          if (out.isNotEmpty && Directory(out).existsSync()) return out;
-        }
-      }
-    } catch (e) {
-      talker.warning('Error en selector nativo: $e');
-    }
-    return null;
-  }
-
-  Future<void> _selectDownloadDirectory() async {
-    final initial = _destination;
-    if (initial == null) return;
-    DownloadDestination currentSelected = initial;
-
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: const Color(0xFF1E1E24),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (context, setSheetState) {
-            final theme = Theme.of(context);
-            final selectedPath = currentSelected.displayPath;
-            final folderName = selectedPath.isNotEmpty
-                ? selectedPath.split(Platform.pathSeparator).where((p) => p.isNotEmpty).lastOrNull ?? selectedPath
-                : 'Descargas';
-            final storageLabel = selectedPath.contains('/storage/emulated/0')
-                ? 'Almacenamiento interno'
-                : (selectedPath.contains('/storage/') ? 'Tarjeta de memoria' : 'Almacenamiento local');
-
-            return SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Center(
-                      child: Container(
-                        width: 40,
-                        height: 4,
-                        margin: const EdgeInsets.only(bottom: 18),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    ),
-                    Text(
-                      'Selección de carpetas',
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-
-                    // Tarjeta de la carpeta seleccionada
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.05),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: theme.colorScheme.primary.withValues(alpha: 0.5),
-                          width: 1.2,
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.folder_rounded, color: theme.colorScheme.primary, size: 28),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  folderName,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 15,
-                                    color: Colors.white,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  storageLabel,
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.white.withValues(alpha: 0.6),
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  selectedPath,
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontFamily: 'monospace',
-                                    color: Colors.white.withValues(alpha: 0.4),
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
-                            ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                            decoration: BoxDecoration(
-                              color: theme.colorScheme.primary.withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.check_circle_rounded, size: 14, color: theme.colorScheme.primary),
-                                const SizedBox(width: 4),
-                                Text(
-                                  'Activado',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                    color: theme.colorScheme.primary,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 22),
-
-                    // Botón para abrir el explorador de archivos nativo del celular
-                    OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                        side: BorderSide(color: Colors.white.withValues(alpha: 0.2)),
-                      ),
-                      icon: const Icon(Icons.add_circle_outline_rounded, size: 20),
-                      label: const Text(
-                        'Agregar carpeta o almacenamiento',
-                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-                      ),
-                      onPressed: () async {
-                        final picked =
-                            Platform.isAndroid ? await _pickAndroidFolder() : await _openNativeFolderPicker();
-                        if (picked != null) {
-                          setSheetState(() => currentSelected = picked);
-                          // En Android el permiso de la carpeta anterior ya se liberó: aplicar de inmediato.
-                          if (mounted) await _setDestination(picked);
-                        }
-                      },
-                    ),
-                    if (Platform.isAndroid && !currentSelected.isAndroidDefault) ...[
-                      const SizedBox(height: 4),
-                      TextButton.icon(
-                        icon: const Icon(Icons.restore_rounded, size: 18),
-                        label: const Text('Usar la carpeta predeterminada (Descargas)'),
-                        onPressed: () async {
-                          final fallback = await _defaultDestination();
-                          setSheetState(() => currentSelected = fallback);
-                          if (mounted) await _setDestination(fallback);
-                        },
-                      ),
-                    ],
-                    const SizedBox(height: 12),
-
-                    // Botón Guardar
-                    FilledButton(
-                      style: FilledButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                      ),
-                      onPressed: () {
-                        _setDestination(currentSelected);
-                        Navigator.of(ctx).pop();
-                        _showInfoSnackBar('Carpeta de destino: ${currentSelected.displayPath}');
-                      },
-                      child: const Text(
-                        'Guardar',
-                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
   }
 
   Future<void> _analyzeUrl([String? explicitUrl]) async {
@@ -511,9 +188,9 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _startDownload(StreamOption option) {
-    final destination = _destination;
-    if (_mediaInfo == null || destination == null) return;
+  Future<void> _startDownload(StreamOption option) async {
+    final mediaInfo = _mediaInfo;
+    if (mediaInfo == null || !_folders.isLoaded) return;
 
     _lastSelectedOption = option;
 
@@ -526,14 +203,27 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     });
 
-    _listenToDownload(
-      _engine.download(
-        url: _mediaInfo!.url,
-        option: option,
-        destination: destination,
-        customTitle: _mediaInfo!.title,
-      ),
-    );
+    try {
+      final destination = await _folders.prepare(_typeOf(option));
+      _listenToDownload(
+        _engine.download(
+          url: mediaInfo.url,
+          option: option,
+          destination: destination,
+          customTitle: mediaInfo.title,
+        ),
+      );
+    } catch (e) {
+      talker.error('No se pudo preparar la carpeta de destino', e);
+      if (!mounted) return;
+      setState(() {
+        _isDownloading = false;
+        _downloadProgress = DownloadProgress(
+          status: DownloadStatus.error,
+          errorMessage: 'No se pudo usar la carpeta de destino: $e',
+        );
+      });
+    }
   }
 
   /// Android: si la descarga siguió en segundo plano (o terminó con la app cerrada),
@@ -713,8 +403,8 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  /// Barra de carpeta de destino. En pantallas angostas los botones pasan a ser solo
-  /// iconos para que la ruta siempre quede visible.
+  /// Barra de carpetas de destino (video y audio) con acceso a los ajustes. En pantallas
+  /// angostas los botones pasan a ser solo iconos para que las rutas siempre queden visibles.
   Widget _buildDirectoryBar(BuildContext context, ThemeData theme) {
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -728,33 +418,26 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           child: Row(
             children: [
-              const Icon(Icons.folder_outlined, size: 18, color: Color(0xFFA855F7)),
-              const SizedBox(width: 10),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text(
-                      'Carpeta de destino',
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF94A3B8)),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      _downloadDirectory.isNotEmpty ? _downloadDirectory : 'Determinando directorio...',
-                      style: const TextStyle(fontSize: 12, color: Color(0xFFE9D5FF), fontFamily: 'monospace'),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
+                child: ListenableBuilder(
+                  listenable: _folders,
+                  builder: (context, _) => Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildFolderLine(Icons.videocam_rounded, _folders.of(StreamType.video)?.displayPath),
+                      const SizedBox(height: 4),
+                      _buildFolderLine(Icons.music_note_rounded, _folders.of(StreamType.audioOnly)?.displayPath),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
               _buildBarButton(
-                tooltip: 'Seleccionar una nueva carpeta de destino',
-                icon: Icons.folder_open_rounded,
-                label: compact ? null : 'Cambiar',
-                onTap: _selectDownloadDirectory,
+                tooltip: 'Carpetas de descarga y permisos',
+                icon: Icons.settings_rounded,
+                label: compact ? null : 'Ajustes',
+                onTap: () => showSettingsSheet(context, folders: _folders),
               ),
               if (kDebugMode) ...[
                 const SizedBox(width: 6),
@@ -770,6 +453,23 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildFolderLine(IconData icon, String? path) {
+    return Row(
+      children: [
+        Icon(icon, size: 14, color: const Color(0xFFA855F7)),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            path ?? 'Determinando carpeta…',
+            style: const TextStyle(fontSize: 12, color: Color(0xFFE9D5FF), fontFamily: 'monospace'),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
     );
   }
 

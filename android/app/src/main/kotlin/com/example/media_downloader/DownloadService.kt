@@ -48,6 +48,8 @@ class DownloadService : Service() {
         val isAudioOnly: Boolean,
         val audioFormat: String,
         val treeUri: String?,
+        /** Subcarpeta de `Download/` cuando no hay [treeUri]. */
+        val subdir: String?,
         val playerClient: String?,
     )
 
@@ -77,6 +79,7 @@ class DownloadService : Service() {
                 putExtra("isAudioOnly", p.isAudioOnly)
                 putExtra("audioFormat", p.audioFormat)
                 putExtra("treeUri", p.treeUri)
+                putExtra("subdir", p.subdir)
                 putExtra("playerClient", p.playerClient)
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -124,6 +127,7 @@ class DownloadService : Service() {
             isAudioOnly = intent.getBooleanExtra("isAudioOnly", false),
             audioFormat = intent.getStringExtra("audioFormat") ?: "mp3",
             treeUri = intent.getStringExtra("treeUri"),
+            subdir = intent.getStringExtra("subdir"),
             playerClient = intent.getStringExtra("playerClient"),
         )
 
@@ -182,7 +186,7 @@ class DownloadService : Service() {
             if (cancelRequested) throw YoutubeDL.CanceledException()
 
             emit(p, mapOf("status" to "processing", "progress" to 99.0, "step" to "Guardando en la carpeta de destino…"))
-            val exported = MediaExporter.export(applicationContext, output, p.treeUri)
+            val exported = MediaExporter.export(applicationContext, output, p.treeUri, p.subdir)
             Log.i(TAG, "Archivo exportado: ${exported.displayPath} (${exported.uri})")
 
             emit(

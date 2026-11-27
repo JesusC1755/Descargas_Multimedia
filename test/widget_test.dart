@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:media_downloader/main.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -11,6 +12,6 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
 
     expect(find.text('Analizar'), findsOneWidget);
-    expect(find.text('Carpeta de destino'), findsOneWidget);
+    expect(find.byIcon(Icons.settings_rounded), findsOneWidget);
   });
 }
