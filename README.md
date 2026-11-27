@@ -7,7 +7,7 @@
 ![Material 3](https://img.shields.io/badge/Material_3-DeepBlue-6750A4?logo=materialdesign&logoColor=white)
 ![Canvas GPU](https://img.shields.io/badge/Canvas-CustomPainter_60FPS-FF6F00?logo=webgl&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Multi--Stage_<300MB-2496ED?logo=docker&logoColor=white)
-![Linux](https://img.shields.io/badge/Linux-Ubuntu_%7C_Debian-FCC624?logo=linux&logoColor=black)
+![Linux](https://img.shields.io/badge/Linux-Arch_%7C_Portable-FCC624?logo=linux&logoColor=black)
 
 
 **Aplicación de escritorio y multiplataforma moderna, reactiva y elegante para la extracción, conversión y descarga de video y audio con arquitectura desacoplada y topología 100% local (Zero-Server).**
@@ -27,7 +27,7 @@
   * **Solo Audio:** Extracción dedicada a contenedores y códecs de alta fidelidad (`MP3` a 320 kbps, `FLAC`, `M4A/AAC`, `Opus`).
 * ⚡ **Streaming Reactivo en Tiempo Real:** Barra de progreso fluida con porcentaje exacto, velocidad de transferencia (`MB/s`), tiempo estimado de finalización (`ETA`) y etapa de multiplexación (`muxing` con FFmpeg).
 * 🛡️ **Validación y Sanitización Robusta:** Detección de URLs maliciosas o malformadas, eliminación de parámetros espía de seguimiento (`utm_*`, `si=`, `fbclid`) antes de invocar subprocesos.
-* 📱 **Android:** motor nativo `youtubedl-android`, descargas en segundo plano con notificación y guardado en cualquier carpeta (incluida la tarjeta SD) vía MediaStore/SAF.
+* 📱 **Android:** APK de 28 MB, YouTube sin yt-dlp, descargas en segundo plano con notificación y guardado en cualquier carpeta (incluida la tarjeta SD) vía MediaStore/SAF.
 * 📋 **Integración de Escritorio:** Pegado directo desde el portapapeles con un clic (`Ctrl + V`), atajo de teclado global para iniciar análisis (`Enter`) y apertura directa de la carpeta de descargas del sistema.
 * 📊 **Observabilidad y Depuración Integrada:** Monitor de logs en memoria en tiempo real potenciado por **Talker**, con visor interactivo de excepciones y botón para copiar diagnósticos al portapapeles.
 
@@ -52,10 +52,12 @@ El proyecto implementa los principios de **Clean Architecture** y el patrón **H
        ┌────────────────▼──────────────┐ ┌──────────────▼──────────────┐
        │     Infrastructure (Desktop)  │ │   Infrastructure (Android)  │
        │   DesktopProcessEngine        │ │   AndroidNativeEngine       │
+       │   • YouTube directo (Dart)    │ │   • YouTube directo (Kotlin)│
        │   • Subprocesos dart:io       │ │   • MethodChannel/EventCh.  │
        │   • Pipes async yt-dlp        │ │   • youtubedl-android       │
-       │   • Muxing FFmpeg             │ │     (yt-dlp+FFmpeg+QuickJS) │
-       │   • Node.js EJS Runtime       │ │   • DownloadService         │
+       │   • Muxing FFmpeg             │ │     (yt-dlp + QuickJS)      │
+       │   • Node.js EJS Runtime       │ │   • MediaTools (sin FFmpeg) │
+       │                               │ │   • DownloadService         │
        │                               │ │   • MediaStore / SAF        │
        └───────────────────────────────┘ └─────────────────────────────┘
 ```
@@ -63,9 +65,9 @@ El proyecto implementa los principios de **Clean Architecture** y el patrón **H
 ### Flujo de Datos Reactivo
 
 1. **Captura y Sanitización:** `UrlInputCard` recibe la URL y la valida contra `MediaUrlValidator`, descartando protocolos inseguros y limpiando hashes de tracking.
-2. **Extracción de Metadatos:** `HomeScreen` delega a `DesktopProcessEngine.analyzeUrl()`, que invoca `yt-dlp --dump-json --js-runtimes node <url>` y genera un modelo inmutable `MediaInfo`.
+2. **Extracción de Metadatos:** `HomeScreen` delega a `DesktopProcessEngine.analyzeUrl()`. Con YouTube, `YouTubeDirectClient` hace una sola petición al API de YouTube (< 1 s); con el resto de sitios, o si eso falla, se invoca `yt-dlp --dump-json --js-runtimes node <url>`. En ambos casos el resultado tiene la forma del JSON de yt-dlp y se convierte en un modelo inmutable `MediaInfo`.
 3. **Selección y Configuración:** El usuario elige la resolución o códec en `QualitySelectorCard`.
-4. **Pipeline de Descarga Asíncrono:** `DesktopProcessEngine.download()` lanza el subproceso combinando las pistas de audio y video con FFmpeg y expone un `Stream<DownloadProgress>`.
+4. **Pipeline de Descarga Asíncrono:** `DesktopProcessEngine.download()` descarga YouTube por HTTP directo (bloques de 10 MB, 4 conexiones) y el resto con yt-dlp; FFmpeg une las pistas o convierte el audio. El avance se expone como `Stream<DownloadProgress>`.
 5. **Renderizado en UI:** `DownloadProgressCard` escucha el `Stream` y actualiza reactivamente la barra de progreso, la velocidad y las métricas de tiempo sin bloquear el hilo principal.
 
 ---
@@ -78,10 +80,12 @@ El proyecto implementa los principios de **Clean Architecture** y el patrón **H
 | **Sistema de Diseño** | **Material 3 (M3)** | Lenguaje visual moderno con `SegmentedButton`, chips dinámicos, `FilledButton`, superficies tonales y bordes suaves (16px). |
 | **Theming Dinámico** | **FlexColorScheme (`deepBlue`)** | Paleta cromática profunda de alto contraste, diseñada específicamente para entornos oscuros de escritorio y legibilidad técnica. |
 | **Motor Gráfico** | **Canvas API & CustomPainter** | Renderizado gráfico por GPU de un fondo ambiental animado con flujos paralelos de video y audio. |
-| **Motor de Extracción** | **`yt-dlp` (Standalone)** | Extractor líder de la industria, actualizado permanentemente contra cambios en los tokens de firma (`n-sig`) de las plataformas. |
-| **Motor Multimedia** | **`FFmpeg` + `ffprobe`** | Mezcla (multiplexado) sin pérdida de calidad (`-c copy`) de pistas de video DASH y streams de audio, además de transcodificación a MP3. |
+| **YouTube directo** | **Cliente `ios_producer` propio** | Una petición al API interno de YouTube (`/youtubei/v1/player`) que devuelve URLs directas en H.264 + AAC, sin desafío JS: analiza en < 1 s. Implementado en Dart (escritorio) y Kotlin (Android); yt-dlp queda como respaldo. |
+| **Motor de Extracción** | **`yt-dlp` (Standalone)** | Extractor líder de la industria para el resto de sitios, actualizado permanentemente contra cambios en los tokens de firma (`n-sig`) de las plataformas. |
+| **Motor Multimedia (escritorio)** | **`FFmpeg` + `ffprobe`** | Mezcla (multiplexado) sin pérdida de calidad (`-c copy`) de pistas de video DASH y streams de audio, además de transcodificación a MP3. |
 | **Resolución JavaScript** | **`Node.js` (EJS Runtime)** | Runtime ligero inyectado a `yt-dlp` vía `--js-runtimes node` para interpretar algoritmos de firma JavaScript ofuscados de YouTube. |
-| **Motor Android** | **`youtubedl-android`** | yt-dlp, FFmpeg y QuickJS empaquetados para Android, invocados desde Kotlin vía MethodChannel. |
+| **Motor Android** | **`youtubedl-android`** | yt-dlp y QuickJS empaquetados para Android, invocados desde Kotlin vía MethodChannel. |
+| **Multimedia Android** | **MediaMuxer / MediaCodec + LAME** | Une pistas y convierte audio con las APIs de Android en lugar de FFmpeg (35 MB menos). MP3 con LAME 3.100, compilado con el NDK. |
 | **Preferencias** | **`shared_preferences`** | Recuerda la carpeta de destino entre sesiones. |
 | **Logging y Diagnóstico**| **`talker_flutter`** | Sistema de observabilidad centralizado que captura eventos de ciclo de vida, excepciones en zona segura (`runZonedGuarded`) y errores de subprocesos. |
 | **Aislamiento / Deploy** | **Docker Multi-Stage** | Empaquetado minimalista (< 300 MB) con aceleración gráfica por hardware Mesa DRI (`/dev/dri`) y servidor gráfico X11. |
@@ -92,21 +96,24 @@ El proyecto implementa los principios de **Clean Architecture** y el patrón **H
 
 La app usa el mismo dominio y la misma UI; solo cambia el adaptador (`AndroidNativeEngine` + código Kotlin en `android/app/src/main/kotlin/`).
 
-* **Motor:** [`youtubedl-android`](https://github.com/JunkFood02/youtubedl-android) ejecuta yt-dlp con Python embebido, FFmpeg y QuickJS. yt-dlp se actualiza en segundo plano como máximo una vez cada 24 h.
-* **YouTube rápido:** se usa el cliente `ios_producer`, que no exige resolver el desafío JavaScript con QuickJS (análisis de ~50 s a ~10 s), funciona con música con licencia y descarga a ~9 MB/s. A igual resolución se prefiere HTTPS sobre HLS. Si falla, se reintenta con los clientes por defecto de yt-dlp.
+* **YouTube sin yt-dlp:** `YouTubeFastExtractor` hace una sola petición al API de YouTube con el cliente `ios_producer` (el mismo que usa yt-dlp), que entrega URLs directas sin desafío JavaScript y funciona con música con licencia. `DirectDownloader` baja vídeo y audio en paralelo, en bloques de 10 MB con 4 conexiones. Si algo falla, se reintenta con yt-dlp.
+* **Resto de sitios:** [`youtubedl-android`](https://github.com/JunkFood02/youtubedl-android) ejecuta yt-dlp con Python embebido y QuickJS. yt-dlp se actualiza en segundo plano como máximo una vez cada 24 h. A igual resolución se prefiere HTTPS sobre HLS.
+* **Sin FFmpeg (APK de 28 MB):** yt-dlp deja vídeo y audio en archivos separados y `MediaTools` los une con MediaMuxer, sin recodificar. El audio se convierte con MediaCodec (M4A, Opus, FLAC) y LAME (MP3). LAME se descarga y compila con CMake en la primera compilación (`android/app/src/main/cpp/`).
 * **Calidades:** solo H.264 hasta 1080p, para no recodificar VP9/AV1 en el teléfono.
-* **Descarga sin repetir el análisis:** el JSON del análisis se reutiliza con `--load-info-json` (vigencia 3 h).
+* **Descarga sin repetir el análisis:** el JSON del análisis se reutiliza (vigencia 3 h); con yt-dlp, mediante `--load-info-json`.
 * **Almacenamiento (scoped storage):** yt-dlp descarga en una carpeta privada de la app y luego el archivo se exporta:
   * carpeta predeterminada → `Download/` mediante MediaStore;
   * carpeta elegida por el usuario (incluida la SD) → SAF con permiso persistente.
 * **Segundo plano:** `DownloadService` (servicio en primer plano `dataSync`) muestra el progreso en una notificación con botón *Cancelar*; al volver a abrir la app se recupera el progreso.
 
 ### Compilar e instalar
+Requiere el NDK y CMake 3.22.1 del SDK de Android (para LAME). La primera compilación necesita internet para descargar LAME.
 ```bash
 flutter build apk --debug                 # o --release
 adb devices                               # si aparece dos veces el mismo teléfono, usa -s
 adb -s <IP:puerto> install -r build/app/outputs/flutter-apk/app-debug.apk
 ```
+La release se firma con la clave indicada en `android/key.properties` (no se sube a git); sin ese archivo se firma con la clave de depuración. Para publicar una versión nueva, sube `version:` en `pubspec.yaml` (el número tras `+` siempre creciente) y firma siempre con la misma clave.
 
 ---
 
@@ -160,32 +167,33 @@ docker compose -f docker/docker-compose.yml up --build
 El módulo [`linux/packaging/`] permite generar paquetes nativos instalables o portables para distribución masiva:
 
 ### Artefactos Generados (`dist/`)
-1. **Paquete Debian (`.deb`):** `media-downloader_<version>_amd64.deb`
-   * Instala la aplicación en `/opt/media-downloader/`.
-   * Enlaza el binario en `/usr/bin/media_downloader`.
-   * Registra el icono de alta resolución y el archivo `.desktop` en el menú del sistema.
-   * Instalación:
+1. **Paquete Portable (`.tar.gz`):** `MediaDownloader-<version>-Linux-x64-Portable.tar.gz`
+   * Cualquier distribución de 64 bits; no requiere `sudo`.
+   * Incluye yt-dlp en `tools/` (la app lo actualiza sola) y el lanzador `run.sh`. Necesita FFmpeg en el sistema.
      ```bash
-     sudo dpkg -i dist/media-downloader_*_amd64.deb
+     tar -xzf MediaDownloader-<version>-Linux-x64-Portable.tar.gz
+     ./media-downloader-linux-x64/run.sh
      ```
-2. **Paquete Portable (`.tar.gz`):** `MediaDownloader-Linux-x64-Portable.tar.gz`
-   * Compatible con Arch Linux, Fedora, openSUSE, etc.
-   * No requiere permisos `sudo`.
-   * Incluye el lanzador `run.sh`:
+2. **Paquete de Arch Linux (`.pkg.tar.zst`):** `media-downloader-bin-<version>-1-x86_64.pkg.tar.zst`
+   * Arch y derivadas (CachyOS, Manjaro, EndeavourOS…). Depende de `gtk3`, `ffmpeg` y `yt-dlp`.
      ```bash
-     tar -xzf MediaDownloader-Linux-x64-Portable.tar.gz
-     cd media-downloader-linux-x64
-     ./run.sh
+     sudo pacman -U media-downloader-bin-*-x86_64.pkg.tar.zst
      ```
+3. **Paquete Debian (`.deb`):** `media-downloader_<version>_amd64.deb`, solo si `dpkg-deb` está instalado.
+   * Instala la aplicación en `/opt/media-downloader/` y la registra en el menú del sistema.
 
-### Compilación Local del Bundle
+### Compilación Local
 ```bash
-# Compilar Flutter y empaquetar ambos formatos
-./linux/packaging/build-linux-bundle.sh
+# Compilar Flutter, el .tar.gz portable (y el .deb si hay dpkg-deb) y el paquete de Arch
+./linux/packaging/build-arch-package.sh --build
 
-# Reempaquetar sin recompilar Flutter
+# Solo el bundle portable / reempaquetar sin recompilar Flutter
+./linux/packaging/build-linux-bundle.sh
 ./linux/packaging/build-linux-bundle.sh --skip-build
 ```
+
+### Publicar una versión
+Los archivos de cada release se reúnen en `dist/v<version>/` (APK, `.tar.gz`, paquete de Arch, `SHA256SUMS.txt` y las notas) y se suben a GitHub Releases con la etiqueta `v<version>`.
 
 
 ## 💻 Instalación y Desarrollo Local
@@ -248,6 +256,8 @@ lib/
 │   │   └── android_native_engine.dart       # Puente con el motor nativo (MethodChannel/EventChannel)
 │   ├── desktop/
 │   │   └── desktop_process_engine.dart      # Motor CLI: subprocesos yt-dlp + FFmpeg + Node.js
+│   ├── youtube/
+│   │   └── youtube_direct.dart              # YouTube sin yt-dlp: API ios_producer + descarga HTTP por bloques
 │   └── media_engine_factory.dart            # Elige el motor según la plataforma
 │
 ├── presentation/                            # Capa de Presentación (Flutter UI)
@@ -266,9 +276,15 @@ lib/
 android/app/src/main/kotlin/com/example/media_downloader/
 ├── MainActivity.kt                          # Canales con Flutter, selector de carpetas y permisos
 ├── YtDlpEngine.kt                           # Inicialización, actualización, análisis y progreso de yt-dlp
+├── YouTubeFastExtractor.kt                  # YouTube sin yt-dlp: API ios_producer
+├── DirectDownloader.kt                      # Descarga HTTP por bloques con varias conexiones
 ├── DownloadService.kt                       # Servicio en primer plano que ejecuta la descarga
 ├── DownloadStateHolder.kt                   # Estado compartido de la descarga (sobrevive a la Activity)
+├── MediaTools.kt                            # Unión de pistas y conversión de audio (MediaMuxer/MediaCodec)
+├── Mp3Encoder.kt                            # Puente JNI con LAME
 └── MediaExporter.kt                         # Exportación a MediaStore/SAF y apertura de carpetas
+
+android/app/src/main/cpp/                    # CMake que descarga y compila LAME 3.100 + puente JNI
 ```
 
 ---
