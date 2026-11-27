@@ -11,6 +11,7 @@ import '../../domain/models/download_progress.dart';
 import '../../domain/models/media_info.dart';
 import '../../domain/models/stream_option.dart';
 import '../../domain/ports/media_engine_port.dart';
+import '../youtube/youtube_direct.dart';
 
 class DesktopProcessEngine implements IMediaEngine {
   Process? _activeProcess;
@@ -209,6 +210,20 @@ class DesktopProcessEngine implements IMediaEngine {
 
   @override
   Future<MediaInfo> analyzeUrl(String url) async {
+    // YouTube: petición directa al API (~0,5 s); si falla, yt-dlp.
+    final videoId = YouTubeDirectClient.videoIdOf(url);
+    if (videoId != null) {
+      final stopwatch = Stopwatch()..start();
+      try {
+        final info = await YouTubeDirectClient.analyze(videoId);
+        talker.info('Análisis directo de YouTube: ${stopwatch.elapsedMilliseconds} ms');
+        _saveInfo(url, jsonEncode(info));
+        return parseMediaInfo(info, url, h264Only: true, maxHeight: maxVideoHeight);
+      } catch (e) {
+        talker.warning('Análisis directo de YouTube falló; se usa yt-dlp: $e');
+      }
+    }
+
     final bin = _getYtDlpExecutable();
     final jsArgs = _getJsRuntimeArgs();
     talker.info('Iniciando análisis con $bin para URL: $url');
@@ -800,8 +815,175 @@ class DesktopProcessEngine implements IMediaEngine {
       });
     }
 
+    // Análisis hecho por YouTubeDirectClient: descarga HTTP directa; si falla, yt-dlp desde la URL.
+    final fastInfo = cachedInfo == null ? null : _readFastInfo(cachedInfo);
+    if (fastInfo != null) {
+      _downloadDirect(
+        info: fastInfo,
+        option: option,
+        directory: normalizedDir,
+        customTitle: customTitle,
+        emit: (progress) {
+          currentProgress = progress;
+          controller.add(progress);
+          if (progress.status == DownloadStatus.completed || progress.status == DownloadStatus.cancelled) {
+            controller.close();
+          }
+        },
+      ).then((handled) {
+        if (handled) return;
+        _discardInfo(url);
+        currentProgress = currentProgress.copyWith(
+          status: DownloadStatus.downloading,
+          percentage: 0.0,
+          currentStep: 'Reintentando descarga...',
+        );
+        controller.add(currentProgress);
+        launch(fromInfo: false);
+      });
+      return controller.stream;
+    }
+
     launch(fromInfo: cachedInfo != null);
     return controller.stream;
+  }
+
+  Map<String, dynamic>? _readFastInfo(File file) {
+    try {
+      final info = jsonDecode(file.readAsStringSync());
+      return info is Map<String, dynamic> && info['_engine'] == YouTubeDirectClient.engine ? info : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// YouTube con el análisis de [YouTubeDirectClient]: HTTP directo con varias conexiones y
+  /// FFmpeg une las pistas (`-c copy`) o convierte el audio. Devuelve false si hay que
+  /// reintentar con yt-dlp; true si terminó (completada o cancelada).
+  Future<bool> _downloadDirect({
+    required Map<String, dynamic> info,
+    required StreamOption option,
+    required String directory,
+    required String? customTitle,
+    required void Function(DownloadProgress) emit,
+  }) async {
+    final sep = Platform.pathSeparator;
+    final title = (customTitle == null || customTitle.trim().isEmpty)
+        ? sanitizeTitle('${info['title'] ?? ''}')
+        : customTitle;
+    final baseName = resolveOutputBaseName(customTitle: title, option: option, downloadDir: directory);
+    final ext = option.isAudioOnly ? option.extension.toLowerCase().trim() : 'mp4';
+    final output = File('$directory$sep$baseName.$ext');
+    // Carpeta oculta junto al destino: /tmp suele estar en RAM (tmpfs).
+    final partsDir = Directory('$directory$sep.media_downloader_${pid}_${DateTime.now().microsecondsSinceEpoch}');
+
+    try {
+      final picked = YouTubeDirectClient.pickFormats(info, audioOnly: option.isAudioOnly, height: option.height);
+      final audioPart = (
+        url: picked.audio['url'] as String,
+        dest: File('${partsDir.path}${sep}audio.m4a'),
+        size: (picked.audio['filesize'] as num?)?.toInt() ?? 0,
+      );
+      final video = picked.video;
+      final videoPart = video == null
+          ? null
+          : (
+              url: video['url'] as String,
+              dest: File('${partsDir.path}${sep}video.mp4'),
+              size: (video['filesize'] as num?)?.toInt() ?? 0,
+            );
+
+      final stopwatch = Stopwatch()..start();
+      await DirectHttpDownloader(userAgent: YouTubeDirectClient.userAgent, isCancelled: () => _cancelRequested)
+          .download([if (videoPart != null) videoPart, audioPart], (downloaded, total, speed) {
+        emit(DownloadProgress(
+          status: DownloadStatus.downloading,
+          percentage: total > 0 ? downloaded * 100 / total : 0,
+          speed: _formatSpeed(speed),
+          eta: total > 0 && speed > 0 ? _formatEta(((total - downloaded) / speed).round()) : null,
+          currentStep: 'Descargando flujo de medios...',
+        ));
+      });
+      talker.info('Descarga directa: ${stopwatch.elapsedMilliseconds} ms');
+
+      final ffmpegArgs = <String>[
+        '-hide_banner', '-loglevel', 'error', '-y',
+        if (videoPart != null) ...[
+          '-i', videoPart.dest.path, '-i', audioPart.dest.path,
+          '-map', '0:v:0', '-map', '1:a:0', '-c', 'copy', '-movflags', '+faststart',
+        ] else ...[
+          '-i', audioPart.dest.path, '-vn',
+          ..._audioCodecArgs(ext),
+        ],
+        output.path,
+      ];
+      emit(DownloadProgress(
+        status: DownloadStatus.processing,
+        percentage: 99.0,
+        currentStep: videoPart != null ? 'Uniendo pistas con FFmpeg...' : 'Procesando audio con FFmpeg...',
+      ));
+      final process = await Process.start(_getFfmpegExecutable(), ffmpegArgs);
+      _activeProcess = process;
+      final stderrText = process.stderr.transform(utf8.decoder).join();
+      await process.stdout.drain<void>();
+      final code = await process.exitCode;
+      _activeProcess = null;
+      if (_cancelRequested) throw const DownloadCancelledException();
+      if (code != 0) throw ProcessException('ffmpeg', ffmpegArgs, (await stderrText).trim(), code);
+
+      emit(DownloadProgress(
+        status: DownloadStatus.completed,
+        percentage: 100.0,
+        currentStep: '¡Descarga Exitosa!',
+        outputFilePath: output.path,
+      ));
+      return true;
+    } on DownloadCancelledException {
+      _deleteQuietly(output);
+      talker.info('Descarga cancelada por el usuario');
+      emit(const DownloadProgress(status: DownloadStatus.cancelled, currentStep: 'Descarga cancelada'));
+      return true;
+    } catch (e, st) {
+      _deleteQuietly(output);
+      if (_cancelRequested) {
+        emit(const DownloadProgress(status: DownloadStatus.cancelled, currentStep: 'Descarga cancelada'));
+        return true;
+      }
+      talker.warning('Descarga directa falló; reintentando con yt-dlp', e, st);
+      return false;
+    } finally {
+      try {
+        if (partsDir.existsSync()) partsDir.deleteSync(recursive: true);
+      } catch (_) {}
+    }
+  }
+
+  /// Igual que `-x --audio-format … --audio-quality 0` de yt-dlp; M4A no se recodifica.
+  static List<String> _audioCodecArgs(String ext) => switch (ext) {
+        'mp3' => ['-c:a', 'libmp3lame', '-q:a', '0'],
+        'opus' => ['-c:a', 'libopus', '-b:a', '160k'],
+        'flac' => ['-c:a', 'flac'],
+        _ => ['-c:a', 'copy', '-movflags', '+faststart'],
+      };
+
+  static void _deleteQuietly(File file) {
+    try {
+      if (file.existsSync()) file.deleteSync();
+    } catch (_) {}
+  }
+
+  /// Velocidad con el formato de yt-dlp (`8.52MiB/s`).
+  static String? _formatSpeed(double bytesPerSecond) {
+    if (bytesPerSecond <= 0) return null;
+    if (bytesPerSecond >= 1024 * 1024) return '${(bytesPerSecond / (1024 * 1024)).toStringAsFixed(2)}MiB/s';
+    return '${(bytesPerSecond / 1024).toStringAsFixed(2)}KiB/s';
+  }
+
+  static String _formatEta(int seconds) {
+    final h = seconds ~/ 3600;
+    final m = (seconds % 3600) ~/ 60;
+    final s = (seconds % 60).toString().padLeft(2, '0');
+    return h > 0 ? '$h:${m.toString().padLeft(2, '0')}:$s' : '${m.toString().padLeft(2, '0')}:$s';
   }
 
   @override
