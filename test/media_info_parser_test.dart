@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:media_downloader/domain/models/stream_option.dart';
 import 'package:media_downloader/infrastructure/desktop/desktop_process_engine.dart';
 
 Map<String, dynamic> _video(String id, int width, int height, String vcodec) => {
@@ -109,6 +110,58 @@ void main() {
     test('no repite alternativas', () {
       final parts = DesktopProcessEngine.buildVideoFormatSelector(height: null, h264Only: false).split('/');
       expect(parts.toSet().length, parts.length);
+    });
+  });
+
+  group('peso de cada opción', () {
+    const mb = 1024 * 1024;
+    final json = {
+      'title': 'Pesos',
+      'duration': 200,
+      'formats': [
+        {'format_id': '140', 'vcodec': 'none', 'acodec': 'mp4a.40.2', 'filesize': 3 * mb, 'tbr': 128},
+        {'format_id': '251', 'vcodec': 'none', 'acodec': 'opus', 'filesize': 2 * mb, 'tbr': 130},
+        {..._video('137', 1920, 1080, 'avc1.640028'), 'filesize': 60 * mb},
+        {..._video('248', 1920, 1080, 'vp9'), 'filesize': 40 * mb},
+        {..._video('136', 1280, 720, 'avc1.4d401f'), 'tbr': 1000},
+        _video('135', 854, 480, 'avc1.4d401e'),
+      ],
+    };
+    final info = DesktopProcessEngine.parseMediaInfo(json, 'https://example.com');
+    StreamOption videoAt(int h) => info.videoOptions.firstWhere((o) => o.height == h);
+    StreamOption audio(String ext) => info.audioOptions.firstWhere((o) => o.extension == ext);
+
+    test('video exacto: H.264 de esa resolución + audio AAC', () {
+      expect(videoAt(1080).filesize, 63 * mb);
+      expect(videoAt(1080).filesizeIsApprox, isFalse);
+    });
+
+    test('sin tamaño se estima con el bitrate y la duración', () {
+      expect(videoAt(720).filesize, 1000 * 1000 ~/ 8 * 200 + 3 * mb);
+      expect(videoAt(720).filesizeIsApprox, isTrue);
+    });
+
+    test('sin tamaño ni bitrate no se muestra peso', () {
+      expect(videoAt(480).filesize, isNull);
+    });
+
+    test('progresivo (video con audio) no suma otra pista', () {
+      final progressive = DesktopProcessEngine.parseMediaInfo({
+        'title': 'Facebook',
+        'formats': [
+          {'format_id': 'hd', 'format_note': 'hd', 'vcodec': 'avc1', 'acodec': 'mp4a', 'filesize': 9 * mb},
+          {'format_id': 'a', 'vcodec': 'none', 'acodec': 'mp4a', 'filesize': mb},
+        ],
+      }, 'https://example.com');
+      expect(progressive.videoOptions.single.filesize, 9 * mb);
+    });
+
+    test('audio: M4A y Opus exactos; MP3 y FLAC estimados por duración', () {
+      expect(audio('m4a').filesize, 3 * mb);
+      expect(audio('opus').filesize, 2 * mb);
+      expect(audio('mp3').filesize, 245 * 1000 ~/ 8 * 200);
+      expect(audio('mp3').filesizeIsApprox, isTrue);
+      expect(audio('flac').filesizeIsApprox, isTrue);
     });
   });
 }

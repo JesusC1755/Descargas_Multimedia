@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_theme.dart';
+import '../../core/utils/formatters.dart';
 import '../../domain/models/media_info.dart';
 import '../../domain/models/stream_option.dart';
 /// Selector interactivo y ergonómico de formatos y calidades multimedia.
@@ -377,6 +378,13 @@ class _QualitySelectorCardState extends State<QualitySelectorCard> {
     );
   }
 
+  String _downloadLabel(bool isVideo) {
+    final action = isVideo ? 'Descargar Video' : 'Extraer Audio';
+    final option = _selectedOption;
+    final size = option == null ? null : Formatters.formatSize(option.filesize, approx: option.filesizeIsApprox);
+    return size == null ? action : '$action · $size';
+  }
+
   Widget _buildDownloadButton(BuildContext context, ThemeData theme) {
     final bool isEnabled = !widget.isDownloading && _selectedOption != null;
     final bool isVideo = _selectedType == StreamType.video;
@@ -437,7 +445,7 @@ class _QualitySelectorCardState extends State<QualitySelectorCard> {
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  isVideo ? 'Descargar Video' : 'Extraer Audio',
+                  _downloadLabel(isVideo),
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
@@ -497,6 +505,7 @@ class _OptionTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final badgeLabel = _getShortBadge();
     final cleanLabel = _getLabel();
+    final size = Formatters.formatSize(option.filesize, approx: option.filesizeIsApprox);
 
     final Color activeAccent = isAudio
         ? const Color(0xFF06B6D4) // Electric Cyan
@@ -583,45 +592,15 @@ class _OptionTile extends StatelessWidget {
                 ),
               ),
 
-              // Indicador derecho: Insignia de verificación si está seleccionado, o círculo sutil si no
-              if (isSelected)
-                Container(
-                  width: 18,
-                  height: 18,
-                  decoration: BoxDecoration(
-                    color: activeAccent.withValues(alpha: 0.2),
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: activeAccent.withValues(alpha: 0.6),
-                      width: 1.2,
-                    ),
-                  ),
-                  child: Icon(
-                    Icons.check_rounded,
-                    size: 13,
-                    color: isAudio ? const Color(0xFF67E8F9) : const Color(0xFFD8B4FE),
-                  ),
-                )
-              else
-                Container(
-                  width: 14,
-                  height: 14,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.2),
-                      width: 1,
-                    ),
-                  ),
-                  child: Center(
-                    child: Container(
-                      width: 4,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: activeAccent.withValues(alpha: 0.25),
-                      ),
-                    ),
+              // Peso del archivo (o nada si la plataforma no lo informa)
+              if (size != null)
+                Text(
+                  size,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    fontFamily: 'monospace',
+                    color: isSelected ? activeAccent : const Color(0xFF94A3B8),
                   ),
                 ),
             ],

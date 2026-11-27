@@ -11,6 +11,7 @@ import '../../domain/models/download_progress.dart';
 import '../../domain/models/media_info.dart';
 import '../../domain/models/stream_option.dart';
 import '../../domain/ports/media_engine_port.dart';
+import '../size_estimator.dart';
 import '../youtube/youtube_direct.dart';
 
 class DesktopProcessEngine implements IMediaEngine {
@@ -279,67 +280,27 @@ class DesktopProcessEngine implements IMediaEngine {
     final thumbnail = rawJson['thumbnail']?.toString();
     final duration = (rawJson['duration'] as num?)?.round();
 
-    final formats = rawJson['formats'] as List<dynamic>? ?? [];
+    final formats = (rawJson['formats'] as List<dynamic>? ?? const []).whereType<Map>().toList();
 
-    final Set<int> availableHeights = {};
+    // Formatos de video utilizables, agrupados por resolución "estándar" (lado menor).
+    final videosByHeight = <int, List<Map>>{};
     for (final f in formats) {
-      if (f is Map) {
-        final vcodec = f['vcodec']?.toString();
-        if (vcodec == 'none') continue; // Omitir streams de solo audio
-        if (h264Only && !_isH264OrUnknown(vcodec)) continue;
-
-        int? width = (f['width'] as num?)?.toInt();
-        int? height = (f['height'] as num?)?.toInt();
-
-        // Si el extractor no incluye dimensiones directamente (común en Facebook SD/HD, Vimeo, etc.),
-        // inferir a partir de resolution, format_note o format_id
-        if (height == null || height <= 0 || width == null || width <= 0) {
-          final res = f['resolution']?.toString() ?? '';
-          final match = RegExp(r'(\d+)x(\d+)').firstMatch(res);
-          if (match != null) {
-            width ??= int.tryParse(match.group(1)!);
-            height ??= int.tryParse(match.group(2)!);
-          }
-        }
-
-        // Para videos verticales (ej. 1080x1920 en Reels/Shorts), el estándar visual es el lado menor (1080p).
-        // Para videos horizontales (ej. 1920x1080), también es el lado menor (1080p).
-        int? standardRes;
-        if (width != null && height != null && width > 0 && height > 0) {
-          standardRes = width < height ? width : height;
-        } else {
-          standardRes = height;
-        }
-
-        if (standardRes == null || standardRes <= 0) {
-          final note = (f['format_note']?.toString() ?? f['format_id']?.toString() ?? '').toLowerCase();
-          if (note.contains('4k') || note.contains('2160')) {
-            standardRes = 2160;
-          } else if (note.contains('2k') || note.contains('1440')) {
-            standardRes = 1440;
-          } else if (note.contains('1080') || note.contains('fhd')) {
-            standardRes = 1080;
-          } else if (note.contains('720') || note == 'hd' || note.contains('hd')) {
-            standardRes = 720;
-          } else if (note.contains('480') || note == 'sd' || note.contains('sd')) {
-            standardRes = 480;
-          } else if (note.contains('360')) {
-            standardRes = 360;
-          }
-        }
-
-        if (standardRes != null && standardRes > 0 && (maxHeight == null || standardRes <= maxHeight)) {
-          availableHeights.add(standardRes);
-        }
+      final vcodec = f['vcodec']?.toString();
+      if (vcodec == 'none') continue; // Omitir streams de solo audio
+      if (h264Only && !_isH264OrUnknown(vcodec)) continue;
+      final res = _standardResolution(f);
+      if (res != null && (maxHeight == null || res <= maxHeight)) {
+        videosByHeight.putIfAbsent(res, () => []).add(f);
       }
     }
 
     // YouTube expone a veces formatos residuales (ej. 72p) que no aportan nada al usuario.
-    if (availableHeights.any((h) => h >= 144)) {
-      availableHeights.removeWhere((h) => h < 144);
+    if (videosByHeight.keys.any((h) => h >= 144)) {
+      videosByHeight.removeWhere((h, _) => h < 144);
     }
 
-    final sortedHeights = availableHeights.toList()..sort((a, b) => b.compareTo(a));
+    final sortedHeights = videosByHeight.keys.toList()..sort((a, b) => b.compareTo(a));
+    final sizes = SizeEstimator(formats, duration);
 
     final videoOptions = <StreamOption>[];
     for (final h in sortedHeights) {
@@ -354,12 +315,15 @@ class DesktopProcessEngine implements IMediaEngine {
         label = 'HD ($label)';
       }
 
+      final size = sizes.video(videosByHeight[h]!);
       videoOptions.add(
         StreamOption(
           formatId: buildVideoFormatSelector(height: h, h264Only: h264Only),
           label: label,
           extension: 'mp4',
           height: h,
+          filesize: size?.bytes,
+          filesizeIsApprox: size?.approx ?? false,
           isAudioOnly: false,
         ),
       );
@@ -378,35 +342,21 @@ class DesktopProcessEngine implements IMediaEngine {
 
     // M4A y Opus se guardan tal como los entrega la plataforma (sin recodificar);
     // MP3 y FLAC se convierten con FFmpeg, más lento y sin ganar calidad.
-    final audioOptions = const <StreamOption>[
-      StreamOption(
-        formatId: 'bestaudio[ext=m4a]/bestaudio',
-        label: 'M4A',
-        extension: 'm4a',
-        note: 'Recomendado',
-        isAudioOnly: true,
-      ),
-      StreamOption(
-        formatId: 'bestaudio',
-        label: 'MP3',
-        extension: 'mp3',
-        note: 'Compatible',
-        isAudioOnly: true,
-      ),
-      StreamOption(
-        formatId: 'bestaudio[acodec=opus]/bestaudio',
-        label: 'Opus',
-        extension: 'opus',
-        note: 'Ligero',
-        isAudioOnly: true,
-      ),
-      StreamOption(
-        formatId: 'bestaudio',
-        label: 'FLAC',
-        extension: 'flac',
-        note: 'Para edición',
-        isAudioOnly: true,
-      ),
+    StreamOption audio(String formatId, String label, String ext, String note, EstimatedSize? size) => StreamOption(
+          formatId: formatId,
+          label: label,
+          extension: ext,
+          note: note,
+          filesize: size?.bytes,
+          filesizeIsApprox: size?.approx ?? false,
+          isAudioOnly: true,
+        );
+    final audioOptions = <StreamOption>[
+      audio('bestaudio[ext=m4a]/bestaudio', 'M4A', 'm4a', 'Recomendado', sizes.bestAudio()),
+      audio('bestaudio', 'MP3', 'mp3', 'Compatible', sizes.atBitrate(SizeEstimator.mp3Kbps)),
+      audio('bestaudio[acodec=opus]/bestaudio', 'Opus', 'opus', 'Ligero',
+          sizes.opusAudio() ?? sizes.atBitrate(SizeEstimator.opusKbps)),
+      audio('bestaudio', 'FLAC', 'flac', 'Para edición', sizes.atBitrate(SizeEstimator.flacKbps)),
     ];
 
     talker.info('Análisis completado: "$title" (${videoOptions.length} calidades de video)');
@@ -420,6 +370,35 @@ class DesktopProcessEngine implements IMediaEngine {
       videoOptions: videoOptions,
       audioOptions: audioOptions,
     );
+  }
+
+  /// Resolución "estándar" de un formato: el lado menor (1080 en 1920x1080 y en 1080x1920).
+  /// Si el extractor no da dimensiones (común en Facebook SD/HD, Vimeo, etc.) se infiere de
+  /// `resolution`, `format_note` o `format_id`.
+  static int? _standardResolution(Map f) {
+    int? width = (f['width'] as num?)?.toInt();
+    int? height = (f['height'] as num?)?.toInt();
+    if (height == null || height <= 0 || width == null || width <= 0) {
+      final match = RegExp(r'(\d+)x(\d+)').firstMatch(f['resolution']?.toString() ?? '');
+      if (match != null) {
+        width ??= int.tryParse(match.group(1)!);
+        height ??= int.tryParse(match.group(2)!);
+      }
+    }
+
+    final res = (width != null && height != null && width > 0 && height > 0)
+        ? (width < height ? width : height)
+        : height;
+    if (res != null && res > 0) return res;
+
+    final note = (f['format_note']?.toString() ?? f['format_id']?.toString() ?? '').toLowerCase();
+    if (note.contains('4k') || note.contains('2160')) return 2160;
+    if (note.contains('2k') || note.contains('1440')) return 1440;
+    if (note.contains('1080') || note.contains('fhd')) return 1080;
+    if (note.contains('720') || note.contains('hd')) return 720;
+    if (note.contains('480') || note.contains('sd')) return 480;
+    if (note.contains('360')) return 360;
+    return null;
   }
 
   static bool _isH264OrUnknown(String? vcodec) {

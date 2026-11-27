@@ -6,6 +6,9 @@ class StreamOption {
   final String extension; // "mp4", "mp3", "m4a", etc.
   final int? height;
   final int? filesize;
+
+  /// El peso es una estimación (bitrate × duración), no el tamaño real.
+  final bool filesizeIsApprox;
   final String? note;
   final bool isAudioOnly;
 
@@ -15,6 +18,7 @@ class StreamOption {
     required this.extension,
     this.height,
     this.filesize,
+    this.filesizeIsApprox = false,
     this.note,
     this.isAudioOnly = false,
   });

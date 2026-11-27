@@ -13,6 +13,19 @@ class Formatters {
 
   static String formatBytes(int? bytes) {
     if (bytes == null || bytes <= 0) return 'Desconocido';
+    final (value, unit) = _scale(bytes);
+    return '${value.toStringAsFixed(1)} $unit';
+  }
+
+  /// Peso corto para mostrar junto a una opción: `64 MB`, `5.2 MB`, con `~` si es estimado;
+  /// null si no se conoce.
+  static String? formatSize(int? bytes, {bool approx = false}) {
+    if (bytes == null || bytes <= 0) return null;
+    final (value, unit) = _scale(bytes);
+    return '${approx ? '~' : ''}${value.toStringAsFixed(value >= 10 ? 0 : 1)} $unit';
+  }
+
+  static (double, String) _scale(int bytes) {
     const suffixes = ['B', 'KB', 'MB', 'GB', 'TB'];
     var i = 0;
     double d = bytes.toDouble();
@@ -20,6 +33,6 @@ class Formatters {
       d /= 1024;
       i++;
     }
-    return '${d.toStringAsFixed(1)} ${suffixes[i]}';
+    return (d, suffixes[i]);
   }
 }
