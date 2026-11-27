@@ -40,7 +40,7 @@ android {
 
         ndk {
             // Arquitectura de 64 bits para dispositivos móviles modernos (NLA LX3 / ARM64).
-            // Mantener solo arm64-v8a reduce el APK de 184 MB a ~40-45 MB (igual que el APK de Seal).
+            // Mantener solo arm64-v8a evita llevar Python para cuatro arquitecturas.
             // Para generar APKs para otras arquitecturas o distribución universal se usa `flutter build apk --split-per-abi`.
             abiFilters.clear()
             abiFilters.add("arm64-v8a")
@@ -87,12 +87,7 @@ android {
                     "lib/x86_64/**"
                 )
             )
-            keepDebugSymbols.addAll(
-                setOf(
-                    "**/libpython.zip.so",
-                    "**/libffmpeg.zip.so"
-                )
-            )
+            keepDebugSymbols.add("**/libpython.zip.so")
         }
     }
 }
@@ -109,7 +104,6 @@ flutter {
 
 dependencies {
     implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
-    implementation("io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0")
     implementation("androidx.core:core:1.16.0")
 }

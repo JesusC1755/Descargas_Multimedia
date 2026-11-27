@@ -68,7 +68,7 @@ class AndroidNativeEngine implements IMediaEngine {
       });
       talker.info(
         'Análisis en Android: ${(stopwatch.elapsedMilliseconds / 1000).toStringAsFixed(1)} s '
-        '(cliente YouTube: $youtubePlayerClient)',
+        '(motor: ${result?['engine'] ?? 'yt-dlp'})',
       );
 
       final debugLines = (result?['debug'] as List?)?.cast<String>() ?? const [];
@@ -144,6 +144,7 @@ class AndroidNativeEngine implements IMediaEngine {
         'id': id,
         'url': url,
         'format': option.formatId,
+        'height': option.height,
         'isAudioOnly': option.isAudioOnly,
         'audioFormat': option.extension,
         'baseName': baseName,

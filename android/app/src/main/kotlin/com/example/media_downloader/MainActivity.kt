@@ -128,7 +128,14 @@ class MainActivity : FlutterActivity() {
                         try {
                             val started = System.currentTimeMillis()
                             val playerClient = call.argument<String>("playerClient")
-                            val analysis = try {
+                            // YouTube: petición directa al API (~0,5 s); si falla, yt-dlp.
+                            val fast = try {
+                                YtDlpEngine.analyzeFast(applicationContext, url)
+                            } catch (e: Throwable) {
+                                Log.w(TAG, "Análisis directo de YouTube falló; se usa yt-dlp: ${e.message?.take(300)}")
+                                null
+                            }
+                            val analysis = fast ?: try {
                                 YtDlpEngine.analyze(applicationContext, url, playerClient)
                             } catch (e: Throwable) {
                                 if (playerClient == null) throw e
@@ -136,11 +143,13 @@ class MainActivity : FlutterActivity() {
                                 Log.w(TAG, "Análisis con cliente $playerClient falló; reintentando con los de yt-dlp: ${e.message?.take(300)}")
                                 YtDlpEngine.analyze(applicationContext, url, null)
                             }
-                            Log.i(TAG, "Análisis yt-dlp (cliente: ${playerClient ?: "por defecto"}): ${System.currentTimeMillis() - started} ms")
+                            val engine = if (fast != null) "directo" else "yt-dlp"
+                            Log.i(TAG, "Análisis ($engine): ${System.currentTimeMillis() - started} ms")
                             withContext(Dispatchers.Main) {
                                 result.success(
                                     mapOf(
                                         "json" to analysis.json,
+                                        "engine" to engine,
                                         "debug" to analysis.debug,
                                         "warnings" to analysis.warnings,
                                     )
@@ -185,6 +194,7 @@ class MainActivity : FlutterActivity() {
                     url = url,
                     baseName = (args["baseName"] as? String)?.takeIf { it.isNotBlank() } ?: "video",
                     format = args["format"] as? String ?: "",
+                    height = (args["height"] as? Number)?.toInt() ?: 0,
                     isAudioOnly = args["isAudioOnly"] as? Boolean ?: false,
                     audioFormat = args["audioFormat"] as? String ?: "mp3",
                     treeUri = args["treeUri"] as? String,

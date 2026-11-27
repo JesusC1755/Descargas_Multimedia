@@ -1,11 +1,11 @@
 package com.example.media_downloader
 
 import android.content.Context
-import com.yausername.ffmpeg.FFmpeg
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import org.json.JSONObject
 import java.io.File
 import java.security.MessageDigest
 
@@ -13,7 +13,8 @@ import java.security.MessageDigest
  * Envoltorio de youtubedl-android: inicialización, actualización de yt-dlp,
  * análisis de URLs y traducción de las líneas de progreso de yt-dlp.
  *
- * La librería ya agrega por su cuenta `--js-runtimes quickjs:<ruta>` y `--ffmpeg-location`.
+ * La librería agrega por su cuenta `--js-runtimes quickjs:<ruta>`. El APK no incluye FFmpeg:
+ * las pistas se unen y el audio se convierte con [MediaTools].
  */
 object YtDlpEngine {
     private const val PREFS = "engine_prefs"
@@ -44,7 +45,6 @@ object YtDlpEngine {
         synchronized(initLock) {
             if (initialized) return
             YoutubeDL.getInstance().init(context.applicationContext)
-            FFmpeg.getInstance().init(context.applicationContext)
             initialized = true
         }
     }
@@ -81,6 +81,14 @@ object YtDlpEngine {
         if (!playerClient.isNullOrBlank()) {
             request.addOption("--extractor-args", "youtube:player_client=$playerClient")
         }
+    }
+
+    /** YouTube sin yt-dlp ([YouTubeFastExtractor]); null si la URL no es de YouTube. */
+    fun analyzeFast(context: Context, url: String): AnalyzeResult? {
+        val videoId = YouTubeFastExtractor.videoIdOf(url) ?: return null
+        val json = YouTubeFastExtractor.analyze(videoId)
+        saveInfo(context, url, json)
+        return AnalyzeResult(json, emptyList(), emptyList())
     }
 
     suspend fun analyze(context: Context, url: String, playerClient: String? = null): AnalyzeResult {
@@ -134,6 +142,13 @@ object YtDlpEngine {
         return file.takeIf { it.isFile && System.currentTimeMillis() - it.lastModified() < INFO_TTL_MS }
     }
 
+    /** El análisis guardado si lo hizo [YouTubeFastExtractor] (se descarga sin yt-dlp); si no, null. */
+    fun fastInfoOf(file: File): JSONObject? = try {
+        JSONObject(file.readText()).takeIf { it.optString("_engine") == YouTubeFastExtractor.ENGINE }
+    } catch (_: Exception) {
+        null
+    }
+
     fun discardInfo(context: Context, url: String) {
         infoFileFor(context, url).delete()
     }
@@ -163,18 +178,31 @@ object YtDlpEngine {
             line.startsWith("[ExtractAudio]") -> processing("Convirtiendo audio…")
             line.startsWith("[Fixup") || line.startsWith("[VideoRemuxer]") || line.startsWith("[VideoConvertor]") ->
                 processing("Ajustando contenedor…")
-            line.startsWith("[download]") && line.contains('%') -> mapOf(
-                "status" to "downloading",
-                "progress" to progress.toDouble().coerceIn(0.0, 100.0),
-                "speed" to speedRegex.find(line)?.groupValues?.get(1)?.replace(" ", ""),
-                "eta" to formatEta(etaSeconds),
-                "step" to "Descargando flujo de medios…",
+            line.startsWith("[download]") && line.contains('%') -> downloading(
+                progress.toDouble(),
+                speedRegex.find(line)?.groupValues?.get(1)?.replace(" ", ""),
+                etaSeconds,
             )
             else -> null
         }
     }
 
-    private fun processing(step: String) = mapOf(
+    fun downloading(progress: Double, speed: String?, etaSeconds: Long) = mapOf(
+        "status" to "downloading",
+        "progress" to progress.coerceIn(0.0, 100.0),
+        "speed" to speed,
+        "eta" to formatEta(etaSeconds),
+        "step" to "Descargando flujo de medios…",
+    )
+
+    /** Velocidad con el mismo formato que yt-dlp (`8.52MiB/s`). */
+    fun formatSpeed(bytesPerSecond: Double): String? = when {
+        bytesPerSecond <= 0 -> null
+        bytesPerSecond >= 1024 * 1024 -> "%.2fMiB/s".format(java.util.Locale.US, bytesPerSecond / (1024 * 1024))
+        else -> "%.2fKiB/s".format(java.util.Locale.US, bytesPerSecond / 1024)
+    }
+
+    fun processing(step: String) = mapOf(
         "status" to "processing",
         "progress" to 99.0,
         "step" to step,

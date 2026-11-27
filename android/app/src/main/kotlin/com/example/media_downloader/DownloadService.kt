@@ -24,7 +24,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 import java.io.File
+import java.io.IOException
 
 private const val TAG = "MediaDownloader"
 
@@ -40,6 +42,7 @@ class DownloadService : Service() {
         val url: String,
         val baseName: String,
         val format: String,
+        val height: Int,
         val isAudioOnly: Boolean,
         val audioFormat: String,
         val treeUri: String?,
@@ -67,6 +70,7 @@ class DownloadService : Service() {
                 putExtra("url", p.url)
                 putExtra("baseName", p.baseName)
                 putExtra("format", p.format)
+                putExtra("height", p.height)
                 putExtra("isAudioOnly", p.isAudioOnly)
                 putExtra("audioFormat", p.audioFormat)
                 putExtra("treeUri", p.treeUri)
@@ -113,6 +117,7 @@ class DownloadService : Service() {
             url = intent.getStringExtra("url") ?: return stopSelf(),
             baseName = intent.getStringExtra("baseName") ?: "video",
             format = intent.getStringExtra("format") ?: "",
+            height = intent.getIntExtra("height", 0),
             isAudioOnly = intent.getBooleanExtra("isAudioOnly", false),
             audioFormat = intent.getStringExtra("audioFormat") ?: "mp3",
             treeUri = intent.getStringExtra("treeUri"),
@@ -152,69 +157,26 @@ class DownloadService : Service() {
     private suspend fun runDownload(p: Params) {
         val workDir = File(workRoot(this), p.id).apply { mkdirs() }
         try {
-            YtDlpEngine.ensureInitialized(applicationContext)
-            YtDlpEngine.awaitPendingUpdate()
-            if (cancelRequested) throw YoutubeDL.CanceledException()
-
-            fun buildRequest(info: File?, client: String?): YoutubeDLRequest {
-                // Con el JSON del análisis no se repite la extracción (ni el desafío JS de YouTube).
-                val request = if (info != null) {
-                    YoutubeDLRequest(emptyList<String>()).addOption("--load-info-json", info.absolutePath)
-                } else {
-                    YoutubeDLRequest(p.url).addOption("--no-playlist").also {
-                        YtDlpEngine.applyPlayerClient(it, client)
-                    }
-                }
-                return request.apply {
-                    addOption("-o", File(workDir, "${p.baseName}.%(ext)s").absolutePath)
-                    addOption("--newline")
-                    if (p.isAudioOnly) {
-                        // Sin -f se baja Opus y se recodifica; con él, M4A/Opus llegan ya en su códec.
-                        if (p.format.isNotEmpty()) addOption("-f", p.format)
-                        addOption("-x")
-                        addOption("--audio-format", p.audioFormat)
-                        addOption("--audio-quality", "0")
-                    } else {
-                        if (p.format.isNotEmpty()) addOption("-f", p.format)
-                        // `proto`: a igual resolución, HTTPS antes que HLS (m3u8 baja en fragmentos).
-                        addOption("-S", "vcodec:h264,res,proto,acodec:aac")
-                        addOption("--merge-output-format", "mp4")
-                    }
-                }
-            }
-
-            fun run(info: File?, client: String?) {
-                val started = System.currentTimeMillis()
-                YoutubeDL.getInstance().execute(buildRequest(info, client), p.id) { progress: Float, eta: Long, line: String ->
-                    YtDlpEngine.describeProgress(progress, eta, line)?.let { emit(p, it) }
-                }
-                val mode = if (info != null) "info-json" else "url"
-                Log.i(TAG, "Descarga yt-dlp ($mode): ${System.currentTimeMillis() - started} ms")
-            }
-
             val cachedInfo = YtDlpEngine.cachedInfoFor(applicationContext, p.url)
-            if (cachedInfo == null) {
-                run(null, p.playerClient)
+            val fastInfo = cachedInfo?.let { YtDlpEngine.fastInfoOf(it) }
+            val output = if (fastInfo == null) {
+                downloadWithYtDlp(p, workDir, cachedInfo)
             } else {
                 try {
-                    run(cachedInfo, null)
+                    downloadDirect(p, fastInfo, workDir)
                 } catch (e: YoutubeDL.CanceledException) {
                     throw e
                 } catch (e: Exception) {
                     if (cancelRequested) throw YoutubeDL.CanceledException()
-                    // Enlaces caducados u otro fallo con el JSON guardado: reintentar desde la URL.
-                    Log.w(TAG, "Fallo con el análisis guardado; reintentando desde la URL: ${e.message?.take(300)}")
+                    // URL caducada u otro fallo: yt-dlp desde la URL.
+                    Log.w(TAG, "Descarga directa falló; reintentando con yt-dlp: ${e.message?.take(300)}")
                     YtDlpEngine.discardInfo(applicationContext, p.url)
                     workDir.listFiles()?.forEach { it.deleteRecursively() }
                     emit(p, mapOf("status" to "downloading", "progress" to 0.0, "step" to "Reintentando descarga…"))
-                    // Reintento con los clientes por defecto de yt-dlp: más lento pero más robusto.
-                    run(null, null)
+                    downloadWithYtDlp(p, workDir, null)
                 }
             }
             if (cancelRequested) throw YoutubeDL.CanceledException()
-
-            val output = findOutputFile(workDir)
-                ?: throw IllegalStateException("yt-dlp terminó pero no se encontró el archivo descargado")
 
             emit(p, mapOf("status" to "processing", "progress" to 99.0, "step" to "Guardando en la carpeta de destino…"))
             val exported = MediaExporter.export(applicationContext, output, p.treeUri)
@@ -242,6 +204,128 @@ class DownloadService : Service() {
         } finally {
             workDir.deleteRecursively()
         }
+    }
+
+    private val isCancelled: () -> Boolean = { cancelRequested }
+
+    /** YouTube con el análisis de [YouTubeFastExtractor]: HTTP directo y unión con MediaMuxer. */
+    private suspend fun downloadDirect(p: Params, info: JSONObject, workDir: File): File {
+        val formats = info.getJSONArray("formats").let { list -> (0 until list.length()).map { list.getJSONObject(it) } }
+        val audio = formats
+            .filter { it.optString("vcodec") == "none" && it.optString("acodec").startsWith("mp4a") }
+            .sortedWith(
+                compareByDescending<JSONObject> { it.optBoolean("audio_is_default", true) }
+                    .thenByDescending { it.optDouble("tbr", 0.0) }
+            )
+            .firstOrNull() ?: throw IOException("Sin pista de audio AAC")
+
+        val partsDir = File(workDir, "parts")
+        val audioPart = DirectDownloader.Part(audio.getString("url"), File(partsDir, "audio.m4a"), audio.optLong("filesize"))
+        var videoPart: DirectDownloader.Part? = null
+        if (!p.isAudioOnly) {
+            // Resolución "estándar" = lado menor (1080 en 1920x1080 y en 1080x1920), como en Dart.
+            fun res(f: JSONObject) = minOf(f.optInt("width"), f.optInt("height"))
+            val videos = formats.filter { it.optString("vcodec").startsWith("avc1") && it.optString("acodec") == "none" }
+            val target = if (p.height > 0) p.height else 1080
+            val video = videos.filter { res(it) <= target }
+                .maxWithOrNull(compareBy<JSONObject>({ res(it) }, { it.optDouble("tbr", 0.0) }))
+                ?: videos.minByOrNull { res(it) }
+                ?: throw IOException("Sin pista de vídeo H.264")
+            videoPart = DirectDownloader.Part(video.getString("url"), File(partsDir, "video.mp4"), video.optLong("filesize"))
+        }
+
+        val started = System.currentTimeMillis()
+        DirectDownloader(YouTubeFastExtractor.USER_AGENT, isCancelled)
+            .download(listOfNotNull(videoPart, audioPart)) { progress ->
+                val percent = if (progress.total > 0) progress.downloaded * 100.0 / progress.total else 0.0
+                val eta = if (progress.total > 0 && progress.bytesPerSecond > 0) {
+                    ((progress.total - progress.downloaded) / progress.bytesPerSecond).toLong()
+                } else {
+                    -1L
+                }
+                emit(p, YtDlpEngine.downloading(percent, YtDlpEngine.formatSpeed(progress.bytesPerSecond), eta))
+            }
+        Log.i(TAG, "Descarga directa: ${System.currentTimeMillis() - started} ms")
+
+        return if (videoPart == null) {
+            emit(p, YtDlpEngine.processing("Convirtiendo audio…"))
+            MediaTools.convertAudio(audioPart.dest, workDir, p.baseName, p.audioFormat, isCancelled)
+        } else {
+            emit(p, YtDlpEngine.processing("Uniendo pistas de audio y video…"))
+            MediaTools.mux(listOf(videoPart.dest, audioPart.dest), workDir, p.baseName, isCancelled)
+        }
+    }
+
+    /**
+     * Cualquier sitio con yt-dlp. Sin FFmpeg, yt-dlp deja vídeo y audio en archivos separados
+     * (`.f<id>.<ext>`) y aquí se unen o se convierte el audio con [MediaTools].
+     */
+    private suspend fun downloadWithYtDlp(p: Params, workDir: File, cachedInfo: File?): File {
+        YtDlpEngine.ensureInitialized(applicationContext)
+        YtDlpEngine.awaitPendingUpdate()
+        if (cancelRequested) throw YoutubeDL.CanceledException()
+        val rawDir = File(workDir, "raw").apply { mkdirs() }
+
+        fun buildRequest(info: File?, client: String?): YoutubeDLRequest {
+            // Con el JSON del análisis no se repite la extracción (ni el desafío JS de YouTube).
+            val request = if (info != null) {
+                YoutubeDLRequest(emptyList<String>()).addOption("--load-info-json", info.absolutePath)
+            } else {
+                YoutubeDLRequest(p.url).addOption("--no-playlist").also {
+                    YtDlpEngine.applyPlayerClient(it, client)
+                }
+            }
+            return request.apply {
+                addOption("-o", File(rawDir, "${p.baseName}.%(ext)s").absolutePath)
+                addOption("--newline")
+                addOption("--fixup", "never")
+                if (p.format.isNotEmpty()) addOption("-f", p.format)
+                if (!p.isAudioOnly) {
+                    // `proto`: a igual resolución, HTTPS antes que HLS (m3u8 baja en fragmentos).
+                    addOption("-S", "vcodec:h264,res,proto,acodec:aac")
+                }
+            }
+        }
+
+        fun run(info: File?, client: String?) {
+            val started = System.currentTimeMillis()
+            YoutubeDL.getInstance().execute(buildRequest(info, client), p.id) { progress: Float, eta: Long, line: String ->
+                YtDlpEngine.describeProgress(progress, eta, line)?.let { emit(p, it) }
+            }
+            val mode = if (info != null) "info-json" else "url"
+            Log.i(TAG, "Descarga yt-dlp ($mode): ${System.currentTimeMillis() - started} ms")
+        }
+
+        if (cachedInfo == null) {
+            run(null, p.playerClient)
+        } else {
+            try {
+                run(cachedInfo, null)
+            } catch (e: YoutubeDL.CanceledException) {
+                throw e
+            } catch (e: Exception) {
+                if (cancelRequested) throw YoutubeDL.CanceledException()
+                // Enlaces caducados u otro fallo con el JSON guardado: reintentar desde la URL.
+                Log.w(TAG, "Fallo con el análisis guardado; reintentando desde la URL: ${e.message?.take(300)}")
+                YtDlpEngine.discardInfo(applicationContext, p.url)
+                rawDir.listFiles()?.forEach { it.deleteRecursively() }
+                emit(p, mapOf("status" to "downloading", "progress" to 0.0, "step" to "Reintentando descarga…"))
+                // Reintento con los clientes por defecto de yt-dlp: más lento pero más robusto.
+                run(null, null)
+            }
+        }
+        if (cancelRequested) throw YoutubeDL.CanceledException()
+
+        val files = downloadedFiles(rawDir)
+        if (files.isEmpty()) throw IllegalStateException("yt-dlp terminó pero no se encontró el archivo descargado")
+
+        if (p.isAudioOnly) {
+            emit(p, YtDlpEngine.processing("Convirtiendo audio…"))
+            return MediaTools.convertAudio(files.maxBy { it.length() }, workDir, p.baseName, p.audioFormat, isCancelled)
+        }
+        if (files.size == 1 && !needsRemux(files[0])) return files[0]
+        emit(p, YtDlpEngine.processing(if (files.size > 1) "Uniendo pistas de audio y video…" else "Ajustando contenedor…"))
+        return MediaTools.mux(files, workDir, p.baseName, isCancelled)
     }
 
     private fun requestCancel() {
@@ -364,12 +448,19 @@ class DownloadService : Service() {
 
     // --- Utilidades -----------------------------------------------------------------------
 
-    /** El archivo final es el más grande que no sea temporal de yt-dlp. */
-    private fun findOutputFile(dir: File): File? {
-        val tempSuffixes = listOf(".part", ".ytdl", ".temp", ".tmp")
+    /** Archivos completos que dejó yt-dlp (sin temporales). */
+    private fun downloadedFiles(dir: File): List<File> {
+        val tempSuffixes = listOf(".part", ".ytdl", ".temp", ".tmp", ".json")
         return dir.listFiles()
-            ?.filter { f -> f.isFile && tempSuffixes.none { f.name.endsWith(it) } && !f.name.contains(".part-Frag") }
-            ?.maxByOrNull { it.length() }
+            ?.filter { f -> f.isFile && f.length() > 0 && tempSuffixes.none { f.name.endsWith(it) } && !f.name.contains(".part-Frag") }
+            .orEmpty()
+    }
+
+    /** HLS nativo de yt-dlp deja MPEG-TS con extensión .mp4, y hay contenedores poco compatibles. */
+    private fun needsRemux(file: File): Boolean {
+        if (file.extension.lowercase() !in setOf("mp4", "m4v", "mov", "webm")) return MediaTools.hasVideo(file)
+        val first = file.inputStream().use { it.read() }
+        return first == 0x47
     }
 
     private fun acquireWakeLock() {
