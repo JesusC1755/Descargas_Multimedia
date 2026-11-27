@@ -10,8 +10,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
@@ -63,7 +61,6 @@ class DownloadService : Service() {
         private const val NOTIFICATION_RESULT = 4101
         private const val WAKE_LOCK_TIMEOUT_MS = 3L * 60 * 60 * 1000
         private const val NOTIFY_INTERVAL_MS = 700L
-        private const val BRAND_COLOR = 0xFFA855F7.toInt()
 
         /** Carpeta privada donde yt-dlp escribe antes de exportar al destino final. */
         fun workRoot(context: Context) = File(context.cacheDir, "downloads")
@@ -405,7 +402,7 @@ class DownloadService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         return NotificationCompat.Builder(this, CHANNEL_PROGRESS)
-            .applyBranding()
+            .setSmallIcon(R.drawable.ic_stat_notify)
             .setContentTitle(title)
             .setContentText(text)
             .setProgress(100, progress, status != "downloading" || progress <= 0)
@@ -419,36 +416,22 @@ class DownloadService : Service() {
     }
 
     private fun showResultNotification(p: Params, event: Map<String, Any?>) {
-        val ok = event["status"] == "completed"
-        val text = if (ok) {
-            event["filePath"] as? String ?: p.baseName
+        val builder = NotificationCompat.Builder(this, CHANNEL_RESULT)
+            .setSmallIcon(R.drawable.ic_stat_notify)
+        if (event["status"] == "completed") {
+            builder.setContentTitle("¡Descarga completada!").setContentText(p.baseName)
         } else {
-            (event["error"] as? String)?.lineSequence()?.firstOrNull { it.isNotBlank() } ?: "Error desconocido"
+            val error = (event["error"] as? String)?.lineSequence()?.firstOrNull { it.isNotBlank() } ?: "Error desconocido"
+            builder.setContentTitle("Descarga fallida")
+                .setContentText(error)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(error))
         }
-        val notification = NotificationCompat.Builder(this, CHANNEL_RESULT)
-            .applyBranding()
-            .setContentTitle(if (ok) "Descarga completada" else "Descarga fallida")
-            .setContentText(text)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(if (ok) "${p.baseName}\n$text" else text))
+        val notification = builder
             .setAutoCancel(true)
             .setContentIntent(openAppIntent())
             .build()
         notifySafely(NOTIFICATION_RESULT, notification)
     }
-
-    /** Logo a color de la app dentro de la notificación. */
-    private val largeIcon: Bitmap? by lazy {
-        BitmapFactory.decodeResource(resources, R.mipmap.ic_launcher)
-    }
-
-    /**
-     * El icono pequeño es obligatorio en Android y siempre se pinta de un solo color;
-     * el logo a color va como icono grande.
-     */
-    private fun NotificationCompat.Builder.applyBranding(): NotificationCompat.Builder =
-        setSmallIcon(R.drawable.ic_stat_notify)
-            .setLargeIcon(largeIcon)
-            .setColor(BRAND_COLOR)
 
     private fun openAppIntent(): PendingIntent = PendingIntent.getActivity(
         this, 0,
