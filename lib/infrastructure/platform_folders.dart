@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -37,7 +38,8 @@ class PlatformFolders {
         if (uri == null) return null;
         return DownloadDestination(displayPath: picked?['path'] as String? ?? uri, androidTreeUri: uri);
       }
-      final path = await _pickDesktopPath(current?.displayPath);
+      // Diálogo nativo del sistema (GTK en Linux), sin depender de zenity ni similares.
+      final path = await getDirectoryPath(initialDirectory: current?.displayPath, confirmButtonText: 'Seleccionar');
       return path == null ? null : DownloadDestination(displayPath: path);
     } catch (e) {
       talker.warning('No se pudo seleccionar la carpeta: $e');
@@ -87,30 +89,5 @@ class PlatformFolders {
     } catch (e) {
       talker.warning('No se pudieron liberar permisos de carpetas: $e');
     }
-  }
-
-  static Future<String?> _pickDesktopPath(String? initial) async {
-    const title = 'Seleccionar carpeta de descargas';
-    final ProcessResult result;
-    if (Platform.isLinux) {
-      result = await Process.run('zenity', [
-        '--file-selection',
-        '--directory',
-        '--title=$title',
-        if (initial != null && initial.isNotEmpty) '--filename=$initial/',
-      ]);
-    } else if (Platform.isWindows) {
-      const script = '[System.Reflection.Assembly]::LoadWithPartialName("System.windows.forms") | Out-Null; '
-          '\$dlg = New-Object System.Windows.Forms.FolderBrowserDialog; '
-          '\$dlg.Description = "$title"; '
-          'if(\$dlg.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK){ Write-Output \$dlg.SelectedPath }';
-      result = await Process.run('powershell', ['-NoProfile', '-Command', script]);
-    } else if (Platform.isMacOS) {
-      result = await Process.run('osascript', ['-e', 'POSIX path of (choose folder with prompt "$title")']);
-    } else {
-      return null;
-    }
-    final out = result.stdout.toString().trim();
-    return result.exitCode == 0 && out.isNotEmpty && Directory(out).existsSync() ? out : null;
   }
 }
