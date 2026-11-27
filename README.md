@@ -24,10 +24,12 @@
 * 🎯 **Compatibilidad Multiplataforma:** Soporte para YouTube, TikTok, Instagram Reels, X (Twitter), Facebook, Twitch VODs, Reddit, Vimeo y enlaces directos de video.
 * 🎛️ **Control Granular de Calidad y Formato:**
   * **Video (MP4):** Resoluciones hasta 1080p (Full HD) en `H.264 / AVC1` + `AAC`, descargadas sin recodificar, para reproducción garantizada en VLC, reproductores de escritorio, navegadores y Smart TVs.
-  * **Solo Audio:** Extracción dedicada a contenedores y códecs de alta fidelidad (`MP3` a 320 kbps, `FLAC`, `M4A/AAC`, `Opus`).
+  * **Solo Audio:** Extracción dedicada a contenedores y códecs de alta fidelidad (`MP3` VBR V0 ~245 kbps, `FLAC`, `M4A/AAC`, `Opus`).
+  * **Peso de cada opción:** cada calidad y formato muestra cuánto pesará el archivo (exacto si la plataforma lo informa; `~` si es una estimación por bitrate y duración).
+* 📂 **Carpetas separadas para video y audio:** por defecto `Descargas/MediaDownloader/Video` y `Descargas/MediaDownloader/Audio`; se cambian desde **Ajustes** con el selector de carpetas del sistema.
 * ⚡ **Streaming Reactivo en Tiempo Real:** Barra de progreso fluida con porcentaje exacto, velocidad de transferencia (`MB/s`), tiempo estimado de finalización (`ETA`) y etapa de multiplexación (`muxing` con FFmpeg).
 * 🛡️ **Validación y Sanitización Robusta:** Detección de URLs maliciosas o malformadas, eliminación de parámetros espía de seguimiento (`utm_*`, `si=`, `fbclid`) antes de invocar subprocesos.
-* 📱 **Android:** APK de 28 MB, YouTube sin yt-dlp, descargas en segundo plano con notificación y guardado en cualquier carpeta (incluida la tarjeta SD) vía MediaStore/SAF.
+* 📱 **Android:** APK de 28 MB, YouTube sin yt-dlp, descargas en segundo plano con notificación, guardado en cualquier carpeta (incluida la tarjeta SD) vía MediaStore/SAF, enlaces compartidos desde otras apps y estado de permisos en Ajustes.
 * 📋 **Integración de Escritorio:** Pegado directo desde el portapapeles con un clic (`Ctrl + V`), atajo de teclado global para iniciar análisis (`Enter`) y apertura directa de la carpeta de descargas del sistema.
 * 📊 **Observabilidad y Depuración Integrada:** Monitor de logs en memoria en tiempo real potenciado por **Talker**, con visor interactivo de excepciones y botón para copiar diagnósticos al portapapeles.
 
@@ -86,7 +88,7 @@ El proyecto implementa los principios de **Clean Architecture** y el patrón **H
 | **Resolución JavaScript** | **`Node.js` (EJS Runtime)** | Runtime ligero inyectado a `yt-dlp` vía `--js-runtimes node` para interpretar algoritmos de firma JavaScript ofuscados de YouTube. |
 | **Motor Android** | **`youtubedl-android`** | yt-dlp y QuickJS empaquetados para Android, invocados desde Kotlin vía MethodChannel. |
 | **Multimedia Android** | **MediaMuxer / MediaCodec + LAME** | Une pistas y convierte audio con las APIs de Android en lugar de FFmpeg (35 MB menos). MP3 con LAME 3.100, compilado con el NDK. |
-| **Preferencias** | **`shared_preferences`** | Recuerda la carpeta de destino entre sesiones. |
+| **Preferencias** | **`shared_preferences`** | Recuerda las carpetas de video y audio entre sesiones. |
 | **Logging y Diagnóstico**| **`talker_flutter`** | Sistema de observabilidad centralizado que captura eventos de ciclo de vida, excepciones en zona segura (`runZonedGuarded`) y errores de subprocesos. |
 | **Aislamiento / Deploy** | **Docker Multi-Stage** | Empaquetado minimalista (< 300 MB) con aceleración gráfica por hardware Mesa DRI (`/dev/dri`) y servidor gráfico X11. |
 
@@ -102,9 +104,11 @@ La app usa el mismo dominio y la misma UI; solo cambia el adaptador (`AndroidNat
 * **Calidades:** solo H.264 hasta 1080p, para no recodificar VP9/AV1 en el teléfono.
 * **Descarga sin repetir el análisis:** el JSON del análisis se reutiliza (vigencia 3 h); con yt-dlp, mediante `--load-info-json`.
 * **Almacenamiento (scoped storage):** yt-dlp descarga en una carpeta privada de la app y luego el archivo se exporta:
-  * carpeta predeterminada → `Download/` mediante MediaStore;
-  * carpeta elegida por el usuario (incluida la SD) → SAF con permiso persistente.
+  * carpeta predeterminada → `Download/MediaDownloader/Video` o `…/Audio` mediante MediaStore, sin permisos;
+  * carpeta elegida por el usuario (incluida la SD) → SAF con permiso persistente (una para video y otra para audio).
 * **Segundo plano:** `DownloadService` (servicio en primer plano `dataSync`) muestra el progreso en una notificación con botón *Cancelar*; al volver a abrir la app se recupera el progreso.
+* **Compartir:** la app aparece en el menú *Compartir* de YouTube, TikTok, etc. y analiza el enlace al abrirse.
+* **Permisos:** *Ajustes* muestra el estado de notificaciones, optimización de batería y (solo Android 7–9) almacenamiento, y lleva a concederlos.
 
 ### Compilar e instalar
 Requiere el NDK y CMake 3.22.1 del SDK de Android (para LAME). La primera compilación necesita internet para descargar LAME.
@@ -193,7 +197,7 @@ El módulo [`linux/packaging/`] permite generar paquetes nativos instalables o p
 ```
 
 ### Publicar una versión
-Los archivos de cada release se reúnen en `dist/v<version>/` (APK, `.tar.gz`, paquete de Arch, `SHA256SUMS.txt` y las notas) y se suben a GitHub Releases con la etiqueta `v<version>`.
+Los archivos de cada release se reúnen en `dist/v<version>/` (APK, `.tar.gz`, paquete de Arch, `SHA256SUMS.txt` y las notas) y se suben a GitHub Releases con la etiqueta `v<version>`. El workflow `release.yml` (`.tar.gz` y `.deb` en GitHub Actions) solo se ejecuta a mano, para no reemplazar los archivos subidos.
 
 
 ## 💻 Instalación y Desarrollo Local
@@ -239,7 +243,7 @@ lib/
 │   ├── theme/
 │   │   └── app_theme.dart                   # Sistema de diseño Material 3 con FlexColorScheme
 │   └── utils/
-│       ├── formatters.dart                  # Formateo de bytes, duraciones y velocidades
+│       ├── formatters.dart                  # Formateo de bytes, pesos, duraciones y velocidades
 │       └── media_url_validator.dart         # Sanitización y validación estricta de URLs
 │
 ├── domain/                                  # Capa de Dominio (Dart puro, agnóstico al SO)
@@ -253,14 +257,20 @@ lib/
 │
 ├── infrastructure/                          # Capa de Infraestructura (Adaptadores)
 │   ├── android/
-│   │   └── android_native_engine.dart       # Puente con el motor nativo (MethodChannel/EventChannel)
+│   │   ├── android_native_engine.dart       # Puente con el motor nativo (MethodChannel/EventChannel)
+│   │   ├── device_permissions.dart          # Estado y solicitud de permisos de Android
+│   │   └── shared_text.dart                 # Enlaces compartidos desde otras apps
 │   ├── desktop/
 │   │   └── desktop_process_engine.dart      # Motor CLI: subprocesos yt-dlp + FFmpeg + Node.js
 │   ├── youtube/
 │   │   └── youtube_direct.dart              # YouTube sin yt-dlp: API ios_producer + descarga HTTP por bloques
-│   └── media_engine_factory.dart            # Elige el motor según la plataforma
+│   ├── media_engine_factory.dart            # Elige el motor según la plataforma
+│   ├── platform_folders.dart                # Carpeta de descargas, selector nativo y explorador de archivos
+│   └── size_estimator.dart                  # Peso de cada calidad y formato de audio
 │
 ├── presentation/                            # Capa de Presentación (Flutter UI)
+│   ├── controllers/
+│   │   └── download_folders_controller.dart # Carpetas de video y audio (preferencias y valores por defecto)
 │   ├── screens/
 │   │   └── home_screen.dart                 # Pantalla principal y orquestador del estado
 │   └── widgets/
@@ -268,13 +278,15 @@ lib/
 │       ├── download_progress_card.dart      # Monitor de descarga activa y visor de errores
 │       ├── media_preview_card.dart          # Tarjeta con miniatura y metadatos del autor
 │       ├── media_preview_skeleton.dart      # Esqueleto de carga durante el análisis
-│       ├── quality_selector_card.dart       # Selector de resolución y códecs de audio
+│       ├── quality_selector_card.dart       # Selector de resolución y códecs de audio con su peso
+│       ├── settings_sheet.dart              # Hoja de Ajustes: carpetas y permisos
 │       └── url_input_card.dart              # Campo de texto para URL con pegado inteligente
 │
 └── main.dart                                # Punto de entrada y captura de errores en zona segura
 
 android/app/src/main/kotlin/com/example/media_downloader/
-├── MainActivity.kt                          # Canales con Flutter, selector de carpetas y permisos
+├── MainActivity.kt                          # Canales con Flutter, selector de carpetas y enlaces compartidos
+├── AppPermissions.kt                        # Estado y solicitud de permisos (almacenamiento, notificaciones, batería)
 ├── YtDlpEngine.kt                           # Inicialización, actualización, análisis y progreso de yt-dlp
 ├── YouTubeFastExtractor.kt                  # YouTube sin yt-dlp: API ios_producer
 ├── DirectDownloader.kt                      # Descarga HTTP por bloques con varias conexiones

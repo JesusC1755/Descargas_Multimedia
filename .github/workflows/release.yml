@@ -1,9 +1,7 @@
 name: Release Linux (.deb & .tar.gz)
 
+# Solo manual: los releases se arman en local (APK, portable, Arch) y se suben por la web.
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
     inputs:
       custom_tag:
