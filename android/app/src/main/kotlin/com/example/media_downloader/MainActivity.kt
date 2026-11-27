@@ -183,7 +183,6 @@ class MainActivity : FlutterActivity() {
                                     mapOf(
                                         "json" to analysis.json,
                                         "engine" to engine,
-                                        "debug" to analysis.debug,
                                         "warnings" to analysis.warnings,
                                     )
                                 )

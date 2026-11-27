@@ -29,7 +29,6 @@ class AndroidNativeEngine implements IMediaEngine {
 
   StreamSubscription? _activeSubscription;
   bool _isInit = false;
-  bool _diagnosticsLogged = false;
 
   Future<bool> _ensureInitialized() async {
     if (_isInit) return true;
@@ -71,11 +70,6 @@ class AndroidNativeEngine implements IMediaEngine {
         '(motor: ${result?['engine'] ?? 'yt-dlp'})',
       );
 
-      final debugLines = (result?['debug'] as List?)?.cast<String>() ?? const [];
-      if (!_diagnosticsLogged && debugLines.isNotEmpty) {
-        _diagnosticsLogged = true;
-        talker.info('Diagnóstico yt-dlp (Android):\n${debugLines.join('\n')}');
-      }
       final warnings = (result?['warnings'] as List?)?.cast<String>() ?? const [];
       for (final w in warnings) {
         talker.warning('[yt-dlp] $w');

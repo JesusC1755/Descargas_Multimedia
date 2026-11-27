@@ -38,8 +38,6 @@ object YtDlpEngine {
     private val speedRegex = Regex("""at\s+~?\s*([\d.]+\s*[KMGT]?i?B/s)""")
 
     /** Líneas de `-v` que identifican versión de yt-dlp, Python y runtimes JS. */
-    private val diagnosticKeys = listOf("version", "JS runtimes", "Optional libraries", "exe versions")
-
     fun ensureInitialized(context: Context) {
         if (initialized) return
         synchronized(initLock) {
@@ -74,7 +72,7 @@ object YtDlpEngine {
 
     fun version(context: Context): String? = YoutubeDL.getInstance().version(context.applicationContext)
 
-    data class AnalyzeResult(val json: String, val debug: List<String>, val warnings: List<String>)
+    data class AnalyzeResult(val json: String, val warnings: List<String>)
 
     /** Fuerza clientes de YouTube (`youtube:player_client=…`); null = los de yt-dlp por defecto. */
     fun applyPlayerClient(request: YoutubeDLRequest, playerClient: String?) {
@@ -88,7 +86,7 @@ object YtDlpEngine {
         val videoId = YouTubeFastExtractor.videoIdOf(url) ?: return null
         val json = YouTubeFastExtractor.analyze(videoId)
         saveInfo(context, url, json)
-        return AnalyzeResult(json, emptyList(), emptyList())
+        return AnalyzeResult(json, emptyList())
     }
 
     suspend fun analyze(context: Context, url: String, playerClient: String? = null): AnalyzeResult {
@@ -97,17 +95,12 @@ object YtDlpEngine {
         val request = YoutubeDLRequest(url).apply {
             addOption("--dump-json")
             addOption("--no-playlist")
-            addOption("-v")
             applyPlayerClient(this, playerClient)
         }
         val response = YoutubeDL.getInstance().execute(request)
-        val errLines = response.err.lines()
-        val debug = errLines
-            .filter { line -> line.startsWith("[debug] ") && diagnosticKeys.any { line.contains(it) } }
-            .take(12)
-        val warnings = errLines.filter { it.startsWith("WARNING:") }
+        val warnings = response.err.lines().filter { it.startsWith("WARNING:") }
         saveInfo(context, url, response.out)
-        return AnalyzeResult(response.out, debug, warnings)
+        return AnalyzeResult(response.out, warnings)
     }
 
     // --- Caché del análisis -------------------------------------------------------------
@@ -158,11 +151,11 @@ object YtDlpEngine {
         infoDir(context).listFiles()?.forEach { if (now - it.lastModified() >= INFO_TTL_MS) it.delete() }
     }
 
-    /** Quita las líneas `[debug]` de los mensajes de error para no ensuciar la UI. */
+    /** Quita las líneas vacías de los mensajes de error para mostrarlos en la UI. */
     fun cleanError(message: String?): String {
         val cleaned = message
             ?.lines()
-            ?.filterNot { it.startsWith("[debug]") || it.isBlank() }
+            ?.filterNot { it.isBlank() }
             ?.joinToString("\n")
             ?.trim()
         return if (cleaned.isNullOrEmpty()) "Error desconocido durante la operación" else cleaned

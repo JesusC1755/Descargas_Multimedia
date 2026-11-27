@@ -186,8 +186,13 @@ class DownloadService : Service() {
             if (cancelRequested) throw YoutubeDL.CanceledException()
 
             emit(p, mapOf("status" to "processing", "progress" to 99.0, "step" to "Guardando en la carpeta de destino…"))
+            val exportStarted = System.currentTimeMillis()
             val exported = MediaExporter.export(applicationContext, output, p.treeUri, p.subdir)
-            Log.i(TAG, "Archivo exportado: ${exported.displayPath} (${exported.uri})")
+            Log.i(
+                TAG,
+                "Archivo exportado en ${System.currentTimeMillis() - exportStarted} ms " +
+                    "(${output.length() / 1_048_576} MB): ${exported.displayPath}",
+            )
 
             emit(
                 p,
@@ -252,7 +257,9 @@ class DownloadService : Service() {
                 }
                 emit(p, YtDlpEngine.downloading(percent, YtDlpEngine.formatSpeed(progress.bytesPerSecond), eta))
             }
-        Log.i(TAG, "Descarga directa: ${System.currentTimeMillis() - started} ms")
+        val elapsedMs = (System.currentTimeMillis() - started).coerceAtLeast(1)
+        val bytes = listOfNotNull(videoPart, audioPart).sumOf { it.dest.length() }
+        Log.i(TAG, "Descarga directa: $elapsedMs ms, %.1f MB/s".format(bytes / 1_048_576.0 / (elapsedMs / 1000.0)))
 
         return if (videoPart == null) {
             emit(p, YtDlpEngine.processing("Convirtiendo audio…"))
