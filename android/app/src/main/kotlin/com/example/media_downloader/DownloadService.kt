@@ -10,8 +10,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
@@ -436,15 +434,9 @@ class DownloadService : Service() {
         notifySafely(NOTIFICATION_RESULT, notification)
     }
 
-    /** Logo de la app: silueta en la barra de estado y el icono a color dentro de la notificación. */
-    private val largeIcon: Bitmap? by lazy {
-        BitmapFactory.decodeResource(resources, R.mipmap.ic_launcher)
-    }
-
+    /** Logo de la app (silueta: Android pinta el icono pequeño de un solo color). */
     private fun NotificationCompat.Builder.applyBranding(): NotificationCompat.Builder =
-        setSmallIcon(R.drawable.ic_stat_notify)
-            .setLargeIcon(largeIcon)
-            .setColor(BRAND_COLOR)
+        setSmallIcon(R.drawable.ic_stat_notify).setColor(BRAND_COLOR)
 
     private fun openAppIntent(): PendingIntent = PendingIntent.getActivity(
         this, 0,

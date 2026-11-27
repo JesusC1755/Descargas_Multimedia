@@ -240,14 +240,15 @@ class _PermissionsSectionState extends State<_PermissionsSection> {
     return SettingsSection(
       title: 'Permisos',
       children: [
-        _row(
-          AppPermission.storage,
-          icon: Icons.verified_user_rounded,
-          title: 'Permiso de almacenamiento',
-          granted: 'Concedido · Lectura y escritura lista',
-          notRequired: 'No necesario · Android 10+ guarda sin permisos',
-          denied: 'Toca para permitir guardar en Descargas',
-        ),
+        // Solo Android 7–9: desde Android 10 se guarda sin permiso de almacenamiento.
+        if (_status[AppPermission.storage] case PermissionState.granted || PermissionState.denied)
+          _row(
+            AppPermission.storage,
+            icon: Icons.verified_user_rounded,
+            title: 'Permiso de almacenamiento',
+            granted: 'Concedido · Lectura y escritura lista',
+            denied: 'Toca para permitir guardar en Descargas',
+          ),
         _row(
           AppPermission.notifications,
           icon: Icons.notifications_rounded,
@@ -272,16 +273,17 @@ class _PermissionsSectionState extends State<_PermissionsSection> {
     required String title,
     required String granted,
     required String denied,
-    String? notRequired,
   }) {
     final state = _status[permission];
-    final ok = state == PermissionState.granted || state == PermissionState.notRequired;
-    final color = state == null ? const Color(0xFF94A3B8) : (ok ? const Color(0xFF34D399) : const Color(0xFFFBBF24));
+    final color = switch (state) {
+      null => const Color(0xFF94A3B8),
+      PermissionState.denied => const Color(0xFFFBBF24),
+      _ => const Color(0xFF34D399),
+    };
     final subtitle = switch (state) {
-      PermissionState.granted => granted,
-      PermissionState.notRequired => notRequired ?? granted,
-      PermissionState.denied => denied,
       null => '…',
+      PermissionState.denied => denied,
+      _ => granted,
     };
 
     return InkWell(
